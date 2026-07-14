@@ -1,0 +1,65 @@
+"""
+Create Agent
+
+Creates a persistent agent in Azure AI Foundry that uses the model exposed
+through the hub APIM connection (routed to gpt-5.1 behind API Management).
+"""
+
+import os
+
+from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import PromptAgentDefinition
+
+load_dotenv()
+
+# Configuration
+PROJECT_ENDPOINT = os.environ.get(
+    "AZURE_AI_PROJECT_ENDPOINT",
+    "https://<account>.services.ai.azure.com/api/projects/<project>",
+)
+CONNECTION_NAME = os.environ.get("AZURE_AI_CONNECTION_NAME", "hub-apim-openai")
+MODEL_NAME = os.environ.get("AZURE_AI_MODEL_NAME", "gpt-5.1")
+
+# Agent configuration
+AGENT_NAME = os.environ.get("AZURE_AI_AGENT_NAME", "apim-agent")
+AGENT_INSTRUCTIONS = """You are a helpful assistant powered by an external LLM through Azure API Management.
+
+Be concise and helpful in your responses."""
+
+
+def main():
+    print("=" * 60)
+    print("Creating Agent in Azure AI Foundry")
+    print("=" * 60)
+    print(f"\nProject: {PROJECT_ENDPOINT}")
+    print(f"Model: {CONNECTION_NAME}/{MODEL_NAME}")
+    print(f"Agent: {AGENT_NAME}")
+    print()
+
+    # Connect to Foundry using DefaultAzureCredential (uses az login session).
+    credential = DefaultAzureCredential()
+    client = AIProjectClient(endpoint=PROJECT_ENDPOINT, credential=credential)
+
+    # Create agent
+    print("Creating agent...")
+    agent = client.agents.create_version(
+        agent_name=AGENT_NAME,
+        definition=PromptAgentDefinition(
+            model=f"{CONNECTION_NAME}/{MODEL_NAME}",
+            instructions=AGENT_INSTRUCTIONS,
+        ),
+    )
+
+    print("\n✅ Agent created!")
+    print(f"   Name: {agent.name}")
+    print(f"   Version: {agent.version}")
+    print()
+    print("Next steps:")
+    print("  1. Test the agent with: uv run chat_with_agent.py")
+    print("  2. Or use it in the Azure AI Foundry portal")
+
+
+if __name__ == "__main__":
+    main()

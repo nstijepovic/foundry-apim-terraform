@@ -1,0 +1,34 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars.local
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+.terraform.lock.hcl
+
+# Local secrets — never commit
+.set-secrets.ps1
+*.auto.tfvars
+
+# Customer-specific tfvars (keep example.tfvars only)
+my.tfvars
+
+# Personal dev helper scripts (not part of the customer flow)
+spoke-private-agent/.run-apply.ps1
+spoke-private-agent/.run-destroy.ps1
+spoke-private-agent/.capcheck.ps1
+spoke-private-agent/.sal-clean.ps1
+spoke-private-agent/validate-out.txt
+
+# Python / agent-samples
+.env
+.venv/
+__pycache__/
+*.pyc

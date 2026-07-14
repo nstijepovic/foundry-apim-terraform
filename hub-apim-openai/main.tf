@@ -121,7 +121,7 @@ resource "azurerm_api_management_backend" "openai" {
   name                = "openai-backend"
   resource_group_name = var.hub_apim_resource_group_name
   api_management_name = data.azurerm_api_management.hub.name
-  protocol            = "http"
+  protocol            = "https"
   url                 = "${local.openai_endpoint}/openai"
 }
 

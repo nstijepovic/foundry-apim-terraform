@@ -79,7 +79,7 @@ def main():
     print("\nSending test message...")
     response = openai.responses.create(
         conversation=conversation.id,
-        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+        extra_body={"agent_reference": {"name": agent.name, "type": "agent_reference"}},
         input="Say hello",
     )
 

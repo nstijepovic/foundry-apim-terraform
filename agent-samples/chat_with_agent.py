@@ -51,7 +51,7 @@ def main():
             response = openai.responses.create(
                 conversation=conversation.id,
                 extra_body={
-                    "agent_reference": {"type": "agent_reference", "name": AGENT_NAME}
+                    "agent_reference": {"name": AGENT_NAME, "type": "agent_reference"}
                 },
                 input=user_input,
             )

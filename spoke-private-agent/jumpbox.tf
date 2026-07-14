@@ -68,6 +68,12 @@ resource "azurerm_windows_virtual_machine" "jumpbox" {
 
   network_interface_ids = [azurerm_network_interface.jumpbox[0].id]
 
+  # System-assigned identity used by DefaultAzureCredential on the VM to
+  # authenticate to the Foundry account (see Foundry User role in rbac.tf).
+  identity {
+    type = "SystemAssigned"
+  }
+
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = "Premium_LRS"

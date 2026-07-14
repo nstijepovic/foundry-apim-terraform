@@ -81,3 +81,16 @@ resource "azurerm_cosmosdb_sql_role_assignment" "cosmos_data_contributor" {
 
   depends_on = [azapi_resource.project_caphost]
 }
+
+# ---- Jumpbox access ----
+
+# Foundry User (formerly "Azure AI User") on the Foundry account, granted to the
+# jumpbox VM's system-assigned identity so DefaultAzureCredential can create and
+# call agents (Microsoft.CognitiveServices/accounts/AIServices/agents/*).
+resource "azurerm_role_assignment" "jumpbox_foundry_user" {
+  count              = var.enable_jumpbox ? 1 : 0
+  scope              = azapi_resource.account.id
+  role_definition_id = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/53ca6127-db72-4b80-b1b0-d745d6d5456d"
+  principal_id       = azurerm_windows_virtual_machine.jumpbox[0].identity[0].principal_id
+  principal_type     = "ServicePrincipal"
+}

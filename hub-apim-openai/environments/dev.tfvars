@@ -1,3 +1,9 @@
+# ---------------------------------------------------------------------------
+# hub-apim-openai — DEV environment (non-secret config, safe to commit).
+# Apply with:  terraform apply -var-file="environments/dev.tfvars"
+# Secrets are NOT set here — this component currently has none.
+# ---------------------------------------------------------------------------
+
 # Hub subscription hosts the existing APIM and the new Azure OpenAI account
 subscription_id = "fbfbfbe5-9ee2-43ed-b514-f3266c2193ab"
 location        = "eastus2"

@@ -53,10 +53,10 @@ URL, and APIM forwards the request to the backend Azure OpenAI deployment.
 
 ```pwsh
 cd hub-apim-openai
-Copy-Item example.tfvars my.tfvars   # then edit my.tfvars for your environment
 ```
 
-Edit `my.tfvars`:
+Non-secret config lives in per-environment files under `environments/`. Edit
+`environments/dev.tfvars` (or copy `environments/prod.tfvars` for another environment):
 
 | Variable | Set to |
 | -------- | ------ |
@@ -71,7 +71,7 @@ Deploy:
 ```pwsh
 $env:ARM_SUBSCRIPTION_ID = "<your-hub-subscription-id>"
 terraform init
-terraform apply -var-file="my.tfvars"
+terraform apply -var-file="environments/dev.tfvars"
 ```
 
 ## Step 2 — Set spoke secrets (never commit these)
@@ -104,11 +104,7 @@ $env:TF_VAR_jumpbox_admin_password = "<strong-password>"
 
 ## Step 3 — Deploy the spoke (private agent)
 
-```pwsh
-Copy-Item example.tfvars my.tfvars   # then edit my.tfvars
-```
-
-Edit `my.tfvars` — key values:
+Edit the non-secret config in `environments/dev.tfvars` — key values:
 
 | Variable | Set to |
 | -------- | ------ |
@@ -123,7 +119,7 @@ Deploy:
 
 ```pwsh
 terraform init
-terraform apply -var-file="my.tfvars"
+terraform apply -var-file="environments/dev.tfvars"
 ```
 
 Capture the outputs you'll need next:
@@ -161,6 +157,90 @@ uv run chat_with_agent.py     # interactive chat
 The signed-in identity needs the **Azure AI User** role on the Foundry project to create/use
 agents.
 
+## Terraform state — where it lives
+
+| How you run | State location | When to use |
+| ----------- | -------------- | ----------- |
+| **Local** (the steps above) | `spoke-private-agent/terraform.tfstate` on your machine (git-ignored) | Single operator, quick tests. |
+| **GitHub Actions / teams** | **Azure Storage** blob via the `azurerm` backend (state locking + versioning) | Shared/automated deployments. |
+
+> ⚠️ **State contains every secret in plaintext** (APIM key, jumpbox password, connection
+> secrets). Never commit it, and lock down the Storage account like a vault.
+
+There is **no committed `backend.tf`**, so local runs stay backendless (local state). The deploy
+workflow generates a `backend.tf` at runtime and points it at your Storage account — so the same
+code works both ways.
+
+### Bootstrap the state Storage account (run once)
+
+```pwsh
+$rg="rg-tfstate"; $sa="sttfstate$(Get-Random -Maximum 99999)"; $loc="eastus2"
+az group create -n $rg -l $loc
+# AAD-only (no storage keys), TLS1.2, no public blob access
+az storage account create -n $sa -g $rg -l $loc --sku Standard_LRS --kind StorageV2 `
+  --min-tls-version TLS1_2 --allow-blob-public-access false --allow-shared-key-access false
+az storage container create --name tfstate --account-name $sa --auth-mode login
+# Versioning + soft delete (recover a bad state)
+az storage account blob-service-properties update -n $sa -g $rg `
+  --enable-versioning true --enable-delete-retention true --delete-retention-days 7
+# Give the deploy identity (and yourself) data-plane access
+az role assignment create --assignee "<ci-or-your-objectId>" `
+  --role "Storage Blob Data Contributor" `
+  --scope $(az storage account show -n $sa -g $rg --query id -o tsv)
+```
+
+Use the resulting `$rg`, `$sa`, and container name as the GitHub `TFSTATE_*` variables below.
+The workflow stores one blob per environment: `spoke-private-agent-<env>.tfstate`.
+
+To adopt remote state for **local** runs too, create a `backend.tf` (it's git-ignored) and run
+`terraform init -migrate-state -backend-config=...` with the same values.
+
+## Deploy the spoke via GitHub Actions (optional)
+
+The pipeline covers the **spoke** only. The hub (`hub-apim-openai`) is deployed manually — it
+mostly exists to expose the model connection for testing — so deploy it once locally (Step 1)
+before running the spoke pipeline.
+
+Two workflows are included under [`.github/workflows/`](.github/workflows):
+
+- **`terraform-validate.yml`** — runs `fmt -check` + `validate` on every PR/push that touches
+  `spoke-private-agent/` (no cloud access needed).
+- **`terraform-deploy.yml`** — manual (`workflow_dispatch`) `plan` / `apply` / `destroy` of the
+  spoke for a chosen **environment** (`dev`/`prod`). It authenticates with **OIDC** (no stored
+  cloud credentials) and stores state in Azure Storage.
+
+### One-time setup
+
+1. **Create the state Storage account** (once) and a container, e.g. `tfstate`. Lock it down
+   (RBAC/AAD auth, versioning, soft delete). State holds secrets in plaintext — treat it like a
+   vault.
+2. **Create an OIDC identity** — an Entra app registration (or user-assigned managed identity)
+   with a **federated credential** for this repo/environment, and grant it `Contributor` +
+   `User Access Administrator` on the target subscription (RBAC assignments are created), plus
+   `Storage Blob Data Contributor` on the state account.
+3. **Configure GitHub** (repo → Settings). Create Environments `dev` and `prod` (add required
+   reviewers on `prod`), then set:
+
+   | Type | Name | Purpose |
+   | ---- | ---- | ------- |
+   | Variable | `TFSTATE_RESOURCE_GROUP` | State storage RG |
+   | Variable | `TFSTATE_STORAGE_ACCOUNT` | State storage account name |
+   | Variable | `TFSTATE_CONTAINER` | State container (e.g. `tfstate`) |
+   | Secret | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | OIDC identity |
+   | Secret | `TF_VAR_APIM_SUBSCRIPTION_KEY` | Hub APIM subscription key |
+   | Secret | `TF_VAR_JUMPBOX_ADMIN_PASSWORD` | Jumpbox admin password |
+
+   Non-secret config stays in `spoke-private-agent/environments/<env>.tfvars`; secrets stay in
+   Environment secrets — the workflow maps them to `TF_VAR_*` automatically.
+
+4. **Run it:** Actions → *Deploy Spoke (Private Agent)* → *Run workflow* → pick environment and
+   `plan`/`apply`/`destroy`.
+
+> **Private networking caveat:** GitHub-hosted runners provision fine over the Azure control
+> plane, but they are **not** inside your VNet. Creating/using agents (data plane) still requires
+> the jumpbox. If apply ever needs private data-plane access, use a **self-hosted runner** in the
+> spoke VNet.
+
 ## Clean up
 
 Destroy in reverse order (spoke first, then hub). Secrets must be present for `destroy` too:
@@ -168,10 +248,10 @@ Destroy in reverse order (spoke first, then hub). Secrets must be present for `d
 ```pwsh
 cd spoke-private-agent
 . .\set-secrets.ps1
-terraform destroy -var-file="my.tfvars"
+terraform destroy -var-file="environments/dev.tfvars"
 
 cd ..\hub-apim-openai
-terraform destroy -var-file="my.tfvars"
+terraform destroy -var-file="environments/dev.tfvars"
 ```
 
 > **Note:** Foundry standard-agent teardown can leave an orphaned *service-association-link* on

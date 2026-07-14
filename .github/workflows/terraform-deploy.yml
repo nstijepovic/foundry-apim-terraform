@@ -1,0 +1,112 @@
+name: Deploy Spoke (Private Agent)
+
+# Manual deployment of the spoke-private-agent component using OIDC (no stored
+# cloud credentials) and remote state in Azure Storage.
+#
+# The hub (hub-apim-openai) is deployed manually — it mostly exists to expose the
+# model connection for testing — so this pipeline covers the spoke only.
+#
+# Config comes from spoke-private-agent/environments/<environment>.tfvars
+# (committed, non-secret). Secrets come from GitHub Environment secrets, mapped
+# to TF_VAR_* below.
+#
+# One-time setup (see README "Deploy the spoke via GitHub Actions"):
+#   - An Entra app/UAMI with a federated credential for this repo (OIDC).
+#   - Environment VARIABLES: TFSTATE_RESOURCE_GROUP, TFSTATE_STORAGE_ACCOUNT,
+#     TFSTATE_CONTAINER.
+#   - Environment SECRETS: AZURE_CLIENT_ID, AZURE_TENANT_ID,
+#     AZURE_SUBSCRIPTION_ID, TF_VAR_APIM_SUBSCRIPTION_KEY,
+#     TF_VAR_JUMPBOX_ADMIN_PASSWORD.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment (must match environments/<env>.tfvars and a GitHub Environment)
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+        required: true
+      action:
+        description: Terraform action
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+        default: plan
+        required: true
+
+permissions:
+  id-token: write   # required for OIDC login to Azure
+  contents: read
+
+concurrency:
+  group: tf-spoke-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.10.5"
+  # Provider auth via OIDC (azurerm + azapi honor these).
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  # Secrets injected as Terraform variables.
+  TF_VAR_apim_subscription_key: ${{ secrets.TF_VAR_APIM_SUBSCRIPTION_KEY }}
+  TF_VAR_jumpbox_admin_password: ${{ secrets.TF_VAR_JUMPBOX_ADMIN_PASSWORD }}
+
+jobs:
+  terraform:
+    name: ${{ inputs.action }} spoke (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}   # ties into GitHub Environment protection rules
+    defaults:
+      run:
+        working-directory: spoke-private-agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure remote state backend
+        run: |
+          cat > backend.tf <<'EOF'
+          terraform {
+            backend "azurerm" {}
+          }
+          EOF
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="key=spoke-private-agent-${{ inputs.environment }}.tfstate" \
+            -backend-config="use_azuread_auth=true"
+
+      - name: Terraform Plan
+        if: inputs.action == 'plan' || inputs.action == 'apply'
+        run: terraform plan -input=false -var-file="environments/${{ inputs.environment }}.tfvars" -out=tfplan
+
+      - name: Terraform Apply
+        if: inputs.action == 'apply'
+        run: terraform apply -input=false tfplan
+
+      - name: Terraform Destroy
+        if: inputs.action == 'destroy'
+        run: terraform destroy -input=false -auto-approve -var-file="environments/${{ inputs.environment }}.tfvars"

@@ -1,3 +1,14 @@
+# ---------------------------------------------------------------------------
+# spoke-private-agent — DEV environment (non-secret config, safe to commit).
+# Apply with:  terraform apply -var-file="environments/dev.tfvars"
+#
+# Secrets are NOT set here. Provide them via env vars before apply
+# (see set-secrets.example.ps1):
+#   $env:TF_VAR_jumpbox_admin_password = "<strong-password>"
+#   $env:TF_VAR_apim_subscription_key  = "<hub-apim-subscription-key>"
+#   $env:ARM_SUBSCRIPTION_ID           = "<subscription-id>"
+# ---------------------------------------------------------------------------
+
 subscription_id     = "fbfbfbe5-9ee2-43ed-b514-f3266c2193ab"
 location            = "westus3"
 resource_group_name = "rg-spoke-agent-wus3"
@@ -30,8 +41,3 @@ enable_apim_model_connection = true
 apim_openai_connection_name  = "hub-apim-openai"
 apim_openai_path             = "openai"
 apim_inference_api_version   = "2024-10-21"
-
-# Secrets — DO NOT set here. Provide via env vars before apply:
-#   $env:TF_VAR_jumpbox_admin_password = "<strong-password>"
-#   $env:TF_VAR_apim_subscription_key  = "<hub-apim-subscription-key>"
-#   $env:ARM_SUBSCRIPTION_ID           = "fbfbfbe5-9ee2-43ed-b514-f3266c2193ab"

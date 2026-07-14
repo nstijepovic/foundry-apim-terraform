@@ -26,11 +26,10 @@ from the spoke deployment:
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) package manager
-- Azure CLI logged in: `az login` (device-code login works over Bastion)
 
-The signed-in identity also needs data-plane permission to create/use agents:
-grant it the **Azure AI User** role on the Foundry project (or account) if
-`az login` runs as a different identity than the deployer.
+`DefaultAzureCredential` authenticates as the jumpbox VM's managed identity, which
+the spoke Terraform grants the **Azure AI User** role on the Foundry account — so
+no `az login` is required.
 
 ## Setup
 

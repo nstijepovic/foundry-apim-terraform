@@ -41,7 +41,7 @@ URL, and APIM forwards the request to the backend Azure OpenAI deployment.
 
 ## Prerequisites
 
-- **Terraform** ≥ 1.5 ([install](https://developer.hashicorp.com/terraform/install))
+- **Terraform** ≥ 1.10 ([install](https://developer.hashicorp.com/terraform/install))
 - **Azure CLI** logged in: `az login`
 - An **existing hub APIM** instance and permission to read its subscription key
 - Sufficient quota in your target region for: 1 D-series VM (jumpbox), Cosmos DB, AI Search,
@@ -137,8 +137,9 @@ The Foundry account has `publicNetworkAccess=Disabled`, so agents can only be cr
 
 1. Azure portal → the jumpbox VM (`terraform output jumpbox_vm_name`) → **Connect → Bastion**.
 2. User: `azureuser` (or your `jumpbox_admin_username`); Password: the one printed in Step 2.
-3. On the VM, install prerequisites and sign in: [Python 3.12+](https://www.python.org/downloads/),
-   [uv](https://docs.astral.sh/uv/), then `az login`.
+3. On the VM, install [Python 3.12+](https://www.python.org/downloads/) and
+   [uv](https://docs.astral.sh/uv/). The VM's managed identity is already authorized by the
+   spoke Terraform, so no `az login` is required.
 
 ## Step 5 — Create and use the agent
 
@@ -154,8 +155,8 @@ uv run create_agent.py        # creates a persistent agent
 uv run chat_with_agent.py     # interactive chat
 ```
 
-The signed-in identity needs the **Azure AI User** role on the Foundry project to create/use
-agents.
+The spoke Terraform grants the jumpbox VM's managed identity the **Azure AI User** role on the
+Foundry account, so `DefaultAzureCredential` can create and use agents out of the box.
 
 ## Terraform state — where it lives
 
@@ -254,19 +255,17 @@ cd ..\hub-apim-openai
 terraform destroy -var-file="environments/dev.tfvars"
 ```
 
-> **Note:** Foundry standard-agent teardown can leave an orphaned *service-association-link* on
-> the agent subnet, which blocks deleting the subnet/VNet/RG until Azure releases it. If a
-> destroy stalls on the network, wait and retry, or delete the resource group later.
+> If `destroy` stalls on network resources, a service-association-link on the agent subnet may
+> still be releasing. Wait a few minutes and retry.
 
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 | ------- | ----------- |
-| `SkuNotAvailable` / Cosmos `ServiceUnavailable` on apply | The region lacks capacity for the VM or Cosmos AZ. Choose another region (reset state: delete `terraform.tfstate` before re-applying to a new region/RG). |
-| Storage `403 KeyBasedAuthenticationNotPermitted` | Ensure the provider uses `storage_use_azuread = true` (already set in `providers.tf`). |
-| Jumpbox `PlatformImageNotFound` | The Windows image SKU isn't offered in your region — pick an available SKU in `jumpbox.tf`. |
-| Peering `ReferencedResourceNotProvisioned` | Transient ordering; re-run `apply`. |
-| Agent scripts fail with network/DNS errors | You're not on the jumpbox. The Foundry account is private — run from inside the VNet. |
+| `SkuNotAvailable` / Cosmos `ServiceUnavailable` on apply | The region lacks capacity for the VM size or Cosmos. Choose a region that offers them. |
+| Storage `403 KeyBasedAuthenticationNotPermitted` | The provider must use AAD auth (`storage_use_azuread = true`, already set in `providers.tf`). |
+| `PlatformImageNotFound` on the jumpbox | The Windows image SKU isn't offered in your region — pick an available SKU in `jumpbox.tf`. |
+| Agent scripts fail with network/DNS errors | Not running on the jumpbox. The Foundry account is private — run from inside the spoke VNet. |
 
 ## References
 

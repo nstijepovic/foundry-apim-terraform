@@ -29,6 +29,12 @@ resource "azurerm_public_ip" "bastion" {
   resource_group_name = azurerm_resource_group.spoke.name
   allocation_method   = "Static"
   sku                 = "Standard"
+
+  # Azure Bastion injects a service-managed ip_tag (FirstPartyUsage=/Unprivileged).
+  # Ignore it so Terraform doesn't try to remove it and force-replace the PIP/Bastion.
+  lifecycle {
+    ignore_changes = [ip_tags]
+  }
 }
 
 resource "azurerm_bastion_host" "bastion" {

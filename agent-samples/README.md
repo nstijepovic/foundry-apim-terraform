@@ -28,8 +28,8 @@ from the spoke deployment:
 - [uv](https://docs.astral.sh/uv/) package manager
 
 `DefaultAzureCredential` authenticates as the jumpbox VM's managed identity, which
-the spoke Terraform grants the **Azure AI User** role on the Foundry account — so
-no `az login` is required.
+the spoke Terraform grants the **Foundry User** role (formerly **Azure AI User**)
+on the Foundry account, so no `az login` is required.
 
 ## Setup
 
@@ -80,16 +80,28 @@ uv run chat_with_agent.py
 
 When an agent references its model as `<connection>/<model>` (e.g.
 `hub-apim-openai/gpt-5.1`), Foundry resolves the connection (category
-`ApiManagement`, target = the APIM gateway URL) and — because the connection
-metadata sets `deploymentInPath=true` — calls:
+`ApiManagement`, target = the APIM gateway URL). Because this connection has no
+static `models` metadata, Foundry first uses APIM's standard dynamic-discovery
+operations:
 
-```
-https://<apim-gateway>/<api-path>/deployments/<model>/chat/completions?api-version=<version>
+```text
+GET https://<apim-gateway>/<api-path>/deployments
+GET https://<apim-gateway>/<api-path>/deployments/<model>
 ```
 
-API Management authenticates the call with the `api-key` subscription header and
-forwards it to the backend Azure OpenAI deployment. All traffic stays private:
-spoke → VNet peering → hub APIM private endpoint.
+The sample then uses Foundry's Responses client. Agent Service sends inference
+through `POST /responses?api-version=2025-03-01-preview`; APIM authenticates the
+incoming call with its `api-key` subscription header and calls Azure OpenAI with
+APIM's managed identity. Chat-completions clients can also use the Azure OpenAI
+path selected by `deploymentInPath=true`:
+
+```text
+POST https://<apim-gateway>/<api-path>/deployments/<model>/chat/completions?api-version=<version>
+```
+
+All traffic stays private: spoke -> VNet peering -> hub APIM private endpoint.
+See Microsoft's [AI gateway guide](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/ai-gateway)
+and [APIM connection schema](https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/01-connections/apim/APIM-Connection-Objects.md).
 
 ## Model reference format
 

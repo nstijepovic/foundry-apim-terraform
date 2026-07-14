@@ -69,7 +69,7 @@ variable "api_path" {
 }
 
 variable "openai_spec_url" {
-  description = "OpenAPI (Swagger) link for the Azure OpenAI inference data-plane API imported into APIM"
+  description = "APIM-compatible OpenAPI link for the Azure OpenAI inference data-plane API; Responses routes are managed separately"
   type        = string
   default     = "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/cognitiveservices/data-plane/AzureOpenAI/inference/stable/2024-10-21/inference.json"
 }

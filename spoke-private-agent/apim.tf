@@ -75,9 +75,10 @@ resource "azapi_resource" "conn_apim_openai" {
     properties = {
       # Official Foundry->APIM connection category (see foundry-samples
       # 01-connections/apim/modules/apim-connection-common.bicep). NOT "AzureOpenAI".
-      category = "ApiManagement"
-      target   = "https://${var.hub_apim_name}.azure-api.net/${var.apim_openai_path}"
-      authType = "ApiKey"
+      category      = "ApiManagement"
+      target        = "https://${var.hub_apim_name}.azure-api.net/${var.apim_openai_path}"
+      authType      = "ApiKey"
+      isSharedToAll = true
       credentials = {
         key = var.apim_subscription_key
       }

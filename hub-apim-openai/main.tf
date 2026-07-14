@@ -22,6 +22,28 @@ locals {
   account_name = lower("${var.openai_name_prefix}${random_string.unique.result}")
   # Azure OpenAI data-plane endpoint (custom subdomain == account name)
   openai_endpoint = "https://${local.account_name}.openai.azure.com"
+  response_operations = {
+    create-response = {
+      display_name = "Create Response"
+      method       = "POST"
+      url_template = "/responses"
+    }
+    get-response = {
+      display_name = "Get Response"
+      method       = "GET"
+      url_template = "/responses/{response_id}"
+    }
+    delete-response = {
+      display_name = "Delete Response"
+      method       = "DELETE"
+      url_template = "/responses/{response_id}"
+    }
+    list-response-input-items = {
+      display_name = "List Response Input Items"
+      method       = "GET"
+      url_template = "/responses/{response_id}/input_items"
+    }
+  }
 }
 
 ## ---------------------------------------------------------------------------
@@ -121,7 +143,7 @@ resource "azurerm_api_management_backend" "openai" {
   name                = "openai-backend"
   resource_group_name = var.hub_apim_resource_group_name
   api_management_name = data.azurerm_api_management.hub.name
-  protocol            = "https"
+  protocol            = "http"
   url                 = "${local.openai_endpoint}/openai"
 }
 
@@ -151,6 +173,29 @@ resource "azurerm_api_management_api" "openai" {
   }
 }
 
+## The published Responses preview OpenAPI document currently contains a schema
+## description that APIM cannot import, so manage its routes explicitly.
+resource "azurerm_api_management_api_operation" "responses" {
+  for_each = local.response_operations
+
+  operation_id        = each.key
+  api_name            = azurerm_api_management_api.openai.name
+  api_management_name = data.azurerm_api_management.hub.name
+  resource_group_name = var.hub_apim_resource_group_name
+  display_name        = each.value.display_name
+  method              = each.value.method
+  url_template        = each.value.url_template
+
+  dynamic "template_parameter" {
+    for_each = strcontains(each.value.url_template, "{response_id}") ? [1] : []
+    content {
+      name     = "response_id"
+      required = true
+      type     = "string"
+    }
+  }
+}
+
 ## API-level policy: route to the backend and authenticate with APIM's managed identity.
 resource "azurerm_api_management_api_policy" "openai" {
   api_name            = azurerm_api_management_api.openai.name
@@ -163,6 +208,89 @@ resource "azurerm_api_management_api_policy" "openai" {
     <base />
     <set-backend-service backend-id="${azurerm_api_management_backend.openai.name}" />
     <authentication-managed-identity resource="https://cognitiveservices.azure.com" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
+XML
+
+  depends_on = [time_sleep.wait_for_rbac]
+}
+
+## Foundry dynamic model discovery uses the standard APIM deployment routes.
+resource "azurerm_api_management_api_operation" "list_deployments" {
+  operation_id        = "list-deployments"
+  api_name            = azurerm_api_management_api.openai.name
+  api_management_name = data.azurerm_api_management.hub.name
+  resource_group_name = var.hub_apim_resource_group_name
+  display_name        = "List Deployments"
+  method              = "GET"
+  url_template        = "/deployments"
+}
+
+resource "azurerm_api_management_api_operation_policy" "list_deployments" {
+  api_name            = azurerm_api_management_api.openai.name
+  api_management_name = data.azurerm_api_management.hub.name
+  resource_group_name = var.hub_apim_resource_group_name
+  operation_id        = azurerm_api_management_api_operation.list_deployments.operation_id
+
+  xml_content = <<XML
+<policies>
+  <inbound>
+    <authentication-managed-identity resource="https://management.azure.com/" />
+    <rewrite-uri template="/deployments?api-version=2023-05-01" copy-unmatched-params="false" />
+    <set-backend-service base-url="https://management.azure.com${azapi_resource.openai.id}" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
+XML
+
+  depends_on = [time_sleep.wait_for_rbac]
+}
+
+resource "azurerm_api_management_api_operation" "get_deployment" {
+  operation_id        = "get-deployment-by-name"
+  api_name            = azurerm_api_management_api.openai.name
+  api_management_name = data.azurerm_api_management.hub.name
+  resource_group_name = var.hub_apim_resource_group_name
+  display_name        = "Get Deployment By Name"
+  method              = "GET"
+  url_template        = "/deployments/{deploymentName}"
+
+  template_parameter {
+    name     = "deploymentName"
+    required = true
+    type     = "string"
+  }
+}
+
+resource "azurerm_api_management_api_operation_policy" "get_deployment" {
+  api_name            = azurerm_api_management_api.openai.name
+  api_management_name = data.azurerm_api_management.hub.name
+  resource_group_name = var.hub_apim_resource_group_name
+  operation_id        = azurerm_api_management_api_operation.get_deployment.operation_id
+
+  xml_content = <<XML
+<policies>
+  <inbound>
+    <authentication-managed-identity resource="https://management.azure.com/" />
+    <rewrite-uri template="/deployments/{deploymentName}?api-version=2023-05-01" copy-unmatched-params="false" />
+    <set-backend-service base-url="https://management.azure.com${azapi_resource.openai.id}" />
   </inbound>
   <backend>
     <base />

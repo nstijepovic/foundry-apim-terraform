@@ -39,6 +39,84 @@ The agent references its model as `<connection-name>/<deployment-name>` (e.g.
 `hub-apim-openai/gpt-5.1`). Foundry resolves the connection, which points at the APIM gateway
 URL, and APIM forwards the request to the backend Azure OpenAI deployment.
 
+### How the Foundry APIM connection works
+
+The spoke creates a project connection with `category = "ApiManagement"`. Its target is the
+hub gateway URL (`https://<apim-name>.azure-api.net/<api-path>`), and its model reference is
+`<connection-name>/<deployment-name>`. This follows the Microsoft Foundry
+[AI gateway connection pattern](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/ai-gateway).
+
+The request path has two separate authentication hops:
+
+1. **Foundry to APIM:** Foundry reads the APIM subscription key from the connection credential
+  and sends it in the `api-key` header. The APIM API is configured to accept that header as its
+  subscription-key header.
+2. **APIM to Azure OpenAI:** APIM discards the need for an Azure OpenAI key and obtains a token
+  with its system-assigned identity. The API policy requests the
+  `https://cognitiveservices.azure.com` audience, and Terraform grants the APIM identity the
+  **Cognitive Services OpenAI User** role on the account. See the official
+  [`authentication-managed-identity` policy](https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy).
+
+This deployment uses **dynamic model discovery**, so the connection does not contain a static
+`models` list. Foundry uses the standard APIM discovery conventions:
+
+```text
+GET <target>/deployments
+GET <target>/deployments/{deploymentName}
+```
+
+The hub Terraform creates both operations. Their operation-level policies authenticate to
+Azure Resource Manager as the APIM identity and return the Azure OpenAI deployment objects that
+Foundry expects. These routes and response formats follow the official
+[APIM connection schema](https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/01-connections/apim/APIM-Connection-Objects.md)
+and [APIM setup guide for Foundry Agents](https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/01-connections/apim/apim-setup-guide-for-agents.md).
+
+#### Static versus dynamic model discovery
+
+Foundry APIM connections support either mode. The agent model reference remains
+`<connection-name>/<deployment-name>` in both cases; only the source of the deployment catalog
+changes.
+
+| Mode | Connection metadata | Required APIM operations | Best fit |
+| ---- | ------------------- | ------------------------ | -------- |
+| **Dynamic (used here)** | Omit `models`; optionally configure `modelDiscovery` for nonstandard paths | Inference operations plus `GET /deployments` and `GET /deployments/{deploymentName}` | Deployments change regularly and APIM should remain the source of truth |
+| **Static** | Include a serialized `models` catalog | Inference operations only; Foundry does not call discovery routes | An explicit, controlled allowlist that changes infrequently |
+
+A static connection would use metadata equivalent to:
+
+```json
+{
+  "deploymentInPath": "true",
+  "inferenceAPIVersion": "2025-03-01-preview",
+  "models": [
+    {
+      "name": "gpt-5.1",
+      "properties": {
+        "model": {
+          "name": "gpt-5.1",
+          "version": "2025-11-13",
+          "format": "OpenAI"
+        }
+      }
+    }
+  ]
+}
+```
+
+For the ARM/Bicep/Terraform connection resource, `models` is stored as a JSON-serialized string,
+not as a native nested array. Static discovery removes only the two deployment-discovery calls;
+APIM must still expose the inference operation used by Agent Service, including `POST /responses`
+for these samples. When a static deployment is added, renamed, upgraded, or removed, update and
+redeploy the connection metadata to keep the catalog synchronized with APIM and Azure OpenAI.
+
+Agent execution uses the Responses API. The hub API therefore also exposes `POST /responses`
+and the related get, delete, and input-items operations. The connection sets
+`inferenceAPIVersion = "2025-03-01-preview"`, which Foundry appends to inference requests. The
+base Azure OpenAI API is imported from Microsoft's APIM-compatible stable OpenAPI document, as
+described in [Import an Azure OpenAI API as a REST API](https://learn.microsoft.com/en-us/azure/api-management/azure-openai-api-from-specification);
+the Responses operations are managed explicitly because the published preview OpenAPI document
+currently contains a schema construct that APIM rejects during import.
+
 ## Prerequisites
 
 - **Terraform** ≥ 1.10 ([install](https://developer.hashicorp.com/terraform/install))
@@ -65,6 +143,11 @@ Non-secret config lives in per-environment files under `environments/`. Edit
 | `hub_apim_name` / `hub_apim_resource_group_name` | Your existing APIM instance |
 | `model_name` / `model_version` / `model_sku_name` / `model_capacity` | The model to deploy |
 | `api_path` | The APIM API path to expose the model under (e.g. `openai`) |
+
+The hub apply also enables APIM's system-assigned identity, grants its Azure OpenAI role, imports
+the inference API, and creates the Responses and dynamic-discovery operations. The identity must
+be allowed to request both Cognitive Services data-plane and Azure Resource Manager tokens;
+the included role assignment supplies the required deployment read permissions.
 
 Deploy:
 
@@ -113,7 +196,11 @@ Edit the non-secret config in `environments/dev.tfvars` — key values:
 | `hub_apim_name` / `hub_apim_resource_group_name` / `hub_apim_subscription_id` | Your hub APIM |
 | `apim_openai_connection_name` | Name for the Foundry connection (e.g. `hub-apim-openai`) |
 | `apim_openai_path` | Must match the hub `api_path` from Step 1 |
-| `apim_inference_api_version` | Inference API version (e.g. `2024-10-21`) |
+| `apim_inference_api_version` | Inference API version used by Agent Service (`2025-03-01-preview`) |
+
+Do not add a static model list for this setup. The connection intentionally relies on the hub
+APIM's `/deployments` operations. If you replace those standard paths with custom paths, add
+serialized `modelDiscovery` metadata as documented in the official APIM connection schema.
 
 Deploy:
 
@@ -155,8 +242,9 @@ uv run create_agent.py        # creates a persistent agent
 uv run chat_with_agent.py     # interactive chat
 ```
 
-The spoke Terraform grants the jumpbox VM's managed identity the **Azure AI User** role on the
-Foundry account, so `DefaultAzureCredential` can create and use agents out of the box.
+The spoke Terraform grants the jumpbox VM's managed identity the **Foundry User** role
+(formerly **Azure AI User**) on the Foundry account, so `DefaultAzureCredential` can create and
+use agents out of the box.
 
 ## Terraform state — where it lives
 
@@ -266,9 +354,17 @@ terraform destroy -var-file="environments/dev.tfvars"
 | Storage `403 KeyBasedAuthenticationNotPermitted` | The provider must use AAD auth (`storage_use_azuread = true`, already set in `providers.tf`). |
 | `PlatformImageNotFound` on the jumpbox | The Windows image SKU isn't offered in your region — pick an available SKU in `jumpbox.tf`. |
 | Agent scripts fail with network/DNS errors | Not running on the jumpbox. The Foundry account is private — run from inside the spoke VNet. |
+| Agent reports `model not found` | Use `<connection-name>/<deployment-name>` and confirm both APIM discovery operations return the deployment. Do not use the underlying model name if it differs from the deployment name. |
+| APIM returns `404 Not Found` for agent responses | Confirm `POST /responses` exists and `apim_inference_api_version` is `2025-03-01-preview`. The stable `2024-10-21` import alone does not expose Responses operations. |
+| Discovery returns `401` or `403` | Confirm APIM has a system-assigned identity and **Cognitive Services OpenAI User** on the Azure OpenAI account. The discovery policy requests an ARM token for `https://management.azure.com/`. |
 
 ## References
 
+- [Bring your own model to Foundry Agent Service through an AI gateway](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/ai-gateway)
+- [Official Foundry APIM connection schema and examples](https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/01-connections/apim/APIM-Connection-Objects.md)
+- [Official APIM setup guide for Foundry Agents](https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/01-connections/apim/apim-setup-guide-for-agents.md)
+- [Import Azure OpenAI into API Management](https://learn.microsoft.com/en-us/azure/api-management/azure-openai-api-from-specification)
+- [API Management managed-identity authentication policy](https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy)
 - [Configure private link for Microsoft Foundry](https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/configure-private-link)
 - [Azure API Management with virtual networks](https://learn.microsoft.com/en-us/azure/api-management/api-management-using-with-vnet)
 - [AzAPI Provider](https://registry.terraform.io/providers/azure/azapi/latest/docs)

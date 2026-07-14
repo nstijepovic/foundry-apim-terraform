@@ -40,4 +40,4 @@ jumpbox_admin_username = "azureuser"
 enable_apim_model_connection = true
 apim_openai_connection_name  = "hub-apim-openai"
 apim_openai_path             = "openai"
-apim_inference_api_version   = "2024-10-21"
+apim_inference_api_version   = "2025-03-01-preview"

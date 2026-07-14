@@ -30,7 +30,7 @@ output "apim_gateway_url" {
 
 output "example_request_url" {
   description = "Example chat completions URL through the gateway (requires an APIM subscription key header: Ocp-Apim-Subscription-Key)"
-  value       = "${data.azurerm_api_management.hub.gateway_url}/${var.api_path}/deployments/${var.model_name}/chat/completions?api-version=2024-10-21"
+  value       = "${data.azurerm_api_management.hub.gateway_url}/${var.api_path}/deployments/${var.model_name}/chat/completions?api-version=2025-03-01-preview"
 }
 
 output "hub_vnet_id" {

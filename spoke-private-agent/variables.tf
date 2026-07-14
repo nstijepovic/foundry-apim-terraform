@@ -124,7 +124,7 @@ variable "apim_openai_path" {
 variable "apim_inference_api_version" {
   description = "api-version used for inference calls through APIM (connection metadata.inferenceAPIVersion)."
   type        = string
-  default     = "2024-10-21"
+  default     = "2025-03-01-preview"
 }
 
 variable "apim_subscription_key" {

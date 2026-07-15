@@ -100,6 +100,48 @@ JSON-serialized string in the ARM/Bicep/Terraform connection resource and must b
 the approved catalog changes. In both modes, APIM must expose the required inference operations
 and enforce model authorization independently of discovery.
 
+##### If the customer chooses static discovery
+
+The spoke template defaults to dynamic discovery. To use a static catalog, edit the `metadata`
+block in `spoke-private-agent/apim.tf` and add `models`:
+
+```hcl
+metadata = {
+  deploymentInPath    = "true"
+  inferenceAPIVersion = var.apim_inference_api_version
+  models = jsonencode([
+    {
+      name = "approved-gpt"
+      properties = {
+        model = {
+          name    = "gpt-5.1"
+          version = "2025-11-13"
+          format  = "OpenAI"
+        }
+      }
+    }
+  ])
+}
+```
+
+Set `name` to the logical deployment alias supplied by the managing team. The nested model
+fields describe the underlying model family, version, and format. Add one catalog object for
+each approved alias, then run the normal `terraform plan` and `terraform apply` commands from
+the customer deployment steps.
+
+With static discovery:
+
+- APIM still needs all inference and Responses operations, but Foundry no longer calls the two
+  `/deployments` discovery operations.
+- Update and reapply the connection whenever an approved alias, model version, or format changes.
+- Set `AZURE_AI_MODEL_NAME` in `agent-samples/.env` to the static catalog alias, for example
+  `approved-gpt`.
+- Do not change `create_agent.py`, `test_connection.py`, or `chat_with_agent.py`; all three still
+  use `<connection-name>/<deployment-name>`.
+
+For repeated deployments that need both modes, convert the catalog into a Terraform variable
+instead of maintaining customer-specific values directly in `apim.tf`.
+
 Agent execution uses the Responses API. The central APIM must expose `POST /responses` and the
 related get, delete, and input-items operations, and it must support the `inferenceAPIVersion`
 configured on the Foundry connection. The reference setup uses `2025-03-01-preview`, which

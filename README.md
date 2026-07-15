@@ -1,4 +1,4 @@
-# Microsoft Foundry Agent behind a Central API Management Gateway
+# Microsoft Foundry Agent behind a Central API Management Gateway Sample Scripts
 
 Deploy a **private-network Microsoft Foundry standard agent** (spoke) that consumes an LLM
 served through an **existing Azure API Management (APIM) gateway**. By default, Foundry calls

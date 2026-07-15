@@ -90,7 +90,7 @@ variable "apim_subscription_key" {
 # Developer access
 # ---------------------------------------------------------------------------
 variable "agent_developer_principal_id" {
-  description = "Optional Entra object ID (user or service principal) to grant the Azure AI User role on the Foundry account, so it can create/call agents from a local machine. Leave null to skip."
+  description = "Optional Entra object ID (user or service principal) to grant the Foundry User role (formerly Azure AI User) on the Foundry account, so it can create/call agents from a local machine. Leave null to skip."
   type        = string
   default     = null
 }

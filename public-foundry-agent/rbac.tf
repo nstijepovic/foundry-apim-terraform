@@ -85,8 +85,8 @@ resource "azurerm_cosmosdb_sql_role_assignment" "cosmos_data_contributor" {
 
 # ---- Developer access ----
 
-# Optional: grant a developer or service principal the "Azure AI User" (formerly
-# "Foundry User") role on the Foundry account so DefaultAzureCredential can create
+# Optional: grant a developer or service principal the "Foundry User" (formerly
+# "Azure AI User") role on the Foundry account so DefaultAzureCredential can create
 # and call agents from a local machine over the public endpoint. Set
 # var.agent_developer_principal_id to enable.
 resource "azurerm_role_assignment" "agent_developer" {

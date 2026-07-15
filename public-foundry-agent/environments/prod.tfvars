@@ -16,5 +16,5 @@ apim_openai_connection_name  = "hub-apim-openai"
 apim_openai_path             = "openai"
 apim_inference_api_version   = "2024-10-21"
 
-# Optional: grant a developer/service principal the Azure AI User role.
+# Optional: grant a developer/service principal the Foundry User role.
 # agent_developer_principal_id = "00000000-0000-0000-0000-000000000000"

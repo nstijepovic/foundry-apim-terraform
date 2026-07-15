@@ -16,7 +16,7 @@ apim_openai_connection_name  = "hub-apim-openai"
 apim_openai_path             = "openai"
 apim_inference_api_version   = "2024-10-21"
 
-# Optional: grant your own object ID the Azure AI User role so you can create
+# Optional: grant your own object ID the Foundry User role so you can create
 # agents from your local machine. Get it with:
 #   az ad signed-in-user show --query id -o tsv
 # agent_developer_principal_id = "00000000-0000-0000-0000-000000000000"

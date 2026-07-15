@@ -16,7 +16,7 @@ own Azure resources (no data-sovereignty / single-tenant isolation requirement).
 - **Foundry project** with a system-assigned managed identity.
 - **APIM model connection** (`category = ApiManagement`) targeting the hub APIM public
   gateway so the agent consumes the model behind APIM.
-- Optional **developer RBAC** (Azure AI User / Foundry User) on the account.
+- Optional **developer RBAC** (Foundry User, formerly Azure AI User) on the account.
 
 That's it — no dependencies, no connections to BYO storage, no capability host, no
 pre/post-caphost role assignments.

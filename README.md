@@ -6,6 +6,12 @@ APIM's published public HTTPS endpoint; the APIM instance, Azure OpenAI resource
 deployments, and backend network remain inaccessible to the customer. The Foundry account can
 still use its own private network for agents and customer-owned resources.
 
+> **Scope:** This repository automates the entity Foundry spoke. The hub APIM configuration is
+> a reference implementation for validation and a single trusted access scope. Production
+> multi-subscription APIM governance, Products, subscription provisioning, model entitlements,
+> quotas, and backend mappings are owned by the central APIM platform team and are not
+> implemented by this repository.
+
 This repo is split into three parts you deploy/run in order:
 
 | # | Folder | What it does |
@@ -20,19 +26,25 @@ This repo is split into three parts you deploy/run in order:
 
 ```mermaid
 flowchart LR
-  subgraph Platform["Central AI platform"]
-    APIM["API Management\n(public gateway endpoint)"]
-        AOAI["Azure OpenAI\n(gpt model)"]
-        APIM --> AOAI
+  subgraph Entity["Entity Azure subscription - automated spoke"]
+    subgraph VNet["Spoke VNet"]
+      JB["Jumpbox VM\nvia Azure Bastion"]
+      Foundry["Foundry account + project\npublic access disabled"]
+      Data["Private Storage, Search, and Cosmos DB"]
     end
-    subgraph Spoke["Spoke VNet (private)"]
-        Foundry["Foundry account + project\n(public access disabled)"]
-        Conn["APIM connection\n(ApiManagement)"]
-        JB["Jumpbox VM\n(via Bastion)"]
-        Foundry --- Conn
-    end
-    JB -->|create/chat agent| Foundry
-    Conn -->|HTTPS + customer APIM key| APIM
+    Conn["Foundry ApiManagement connection"]
+    JB -->|create and use agent| Foundry
+    Foundry --- Conn
+    Foundry --> Data
+  end
+
+  subgraph Platform["Central AI platform - externally governed"]
+    APIM["API Management\npublished HTTPS gateway"]
+    AOAI["Azure OpenAI / PTU\nprivate backend"]
+    APIM -->|managed identity| AOAI
+  end
+
+  Conn -->|HTTPS + entity APIM key| APIM
 ```
 
 The agent references its model as `<connection-name>/<deployment-name>` (e.g.
@@ -147,9 +159,19 @@ Two different kinds of subscription are involved:
 
 ```mermaid
 flowchart LR
-  F1["Entity A Azure subscription\nFoundry"] -->|"Entity A APIM product key"| APIM["Central APIM gateway"]
-  F2["Entity B Azure subscription\nFoundry"] -->|"Entity B APIM product key"| APIM
-    APIM -->|"approved deployment mapping"| PTU["Central Azure OpenAI / PTU"]
+  subgraph Entities["Entity-owned Azure subscriptions"]
+    F1["Entity A\nprivate Foundry spoke"]
+    F2["Entity B\nprivate Foundry spoke"]
+  end
+
+  subgraph Platform["Central platform subscription"]
+    APIM["APIM gateway\nProducts, subscriptions, policies, quotas"]
+    PTU["Azure OpenAI / PTU\nprivate deployments"]
+    APIM -->|approved alias and backend mapping| PTU
+  end
+
+  F1 -->|Entity A Product key| APIM
+  F2 -->|Entity B Product key| APIM
 ```
 
 #### Customer onboarding checklist
@@ -514,18 +536,6 @@ terraform destroy -var-file="environments/dev.tfvars"
 
 > If `destroy` stalls on network resources, a service-association-link on the agent subnet may
 > still be releasing. Wait a few minutes and retry.
-
-## Troubleshooting
-
-| Symptom | Cause / fix |
-| ------- | ----------- |
-| `SkuNotAvailable` / Cosmos `ServiceUnavailable` on apply | The region lacks capacity for the VM size or Cosmos. Choose a region that offers them. |
-| Storage `403 KeyBasedAuthenticationNotPermitted` | The provider must use AAD auth (`storage_use_azuread = true`, already set in `providers.tf`). |
-| `PlatformImageNotFound` on the jumpbox | The Windows image SKU isn't offered in your region — pick an available SKU in `jumpbox.tf`. |
-| Agent scripts fail with network/DNS errors | Not running on the jumpbox. The Foundry account is private — run from inside the spoke VNet. |
-| Agent reports `model not found` | Use `<connection-name>/<deployment-name>` and confirm both APIM discovery operations return the deployment. Do not use the underlying model name if it differs from the deployment name. |
-| APIM returns `404 Not Found` for agent responses | Confirm `POST /responses` exists and `apim_inference_api_version` is `2025-03-01-preview`. The stable `2024-10-21` import alone does not expose Responses operations. |
-| Discovery returns `401` or `403` | Confirm APIM has a system-assigned identity and **Cognitive Services OpenAI User** on the Azure OpenAI account. The discovery policy requests an ARM token for `https://management.azure.com/`. |
 
 ## References
 

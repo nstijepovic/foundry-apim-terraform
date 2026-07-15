@@ -12,13 +12,13 @@ still use its own private network for agents and customer-owned resources.
 > quotas, and backend mappings are owned by the central APIM platform team and are not
 > implemented by this repository.
 
-This repo is split into three parts you deploy/run in order:
+This repo contains the customer spoke, agent samples, and an optional hub reference:
 
 | # | Folder | What it does |
 | - | ------ | ------------ |
-| 1 | [`hub-apim-openai/`](hub-apim-openai) | Creates an Azure OpenAI model and wires it behind your existing hub APIM (imports inference and discovery operations and configures managed-identity backend access). |
-| 2 | [`spoke-private-agent/`](spoke-private-agent) | Deploys the private Foundry account + project (BYO Storage/Search/Cosmos), its own VNet, an APIM **connection**, and a **jumpbox** VM (reached via Azure Bastion). |
-| 3 | [`agent-samples/`](agent-samples) | Python scripts to create and chat with an agent that routes its model calls through the APIM connection. Run these **from the jumpbox**. |
+| 1 | [`spoke-private-agent/`](spoke-private-agent) | **Customer deployment:** creates the private Foundry account + project (BYO Storage/Search/Cosmos), its VNet, an APIM **connection**, and a **jumpbox** VM reached through Azure Bastion. |
+| 2 | [`agent-samples/`](agent-samples) | **Customer validation:** creates and tests an agent that routes model calls through the APIM connection. Run these scripts from the jumpbox. |
+| 3 | [`hub-apim-openai/`](hub-apim-openai) | **Reference only:** creates a model and APIM operations for an isolated test environment. Do not apply it to the shared platform APIM. |
 
 > `code/` is early single-folder scaffolding and is **not** part of the supported flow — ignore it.
 
@@ -94,32 +94,11 @@ changes.
 | **Dynamic (used here)** | Omit `models`; optionally configure `modelDiscovery` for nonstandard paths | Inference operations plus `GET /deployments` and `GET /deployments/{deploymentName}` | Deployments change regularly and APIM should remain the source of truth |
 | **Static** | Include a serialized `models` catalog | Inference operations only; Foundry does not call discovery routes | An explicit, controlled allowlist that changes infrequently |
 
-A static connection would use metadata equivalent to:
-
-```json
-{
-  "deploymentInPath": "true",
-  "inferenceAPIVersion": "2025-03-01-preview",
-  "models": [
-    {
-      "name": "gpt-5.1",
-      "properties": {
-        "model": {
-          "name": "gpt-5.1",
-          "version": "2025-11-13",
-          "format": "OpenAI"
-        }
-      }
-    }
-  ]
-}
-```
-
-For the ARM/Bicep/Terraform connection resource, `models` is stored as a JSON-serialized string,
-not as a native nested array. Static discovery removes only the two deployment-discovery calls;
-APIM must still expose the inference operation used by Agent Service, including `POST /responses`
-for these samples. When a static deployment is added, renamed, upgraded, or removed, update and
-redeploy the connection metadata to keep the catalog synchronized with APIM and Azure OpenAI.
+For dynamic discovery on a shared gateway, APIM must return only the deployment aliases approved
+for the calling Product/subscription. For static discovery, `models` is stored as a
+JSON-serialized string in the ARM/Bicep/Terraform connection resource and must be updated when
+the approved catalog changes. In both modes, APIM must expose the required inference operations
+and enforce model authorization independently of discovery.
 
 Agent execution uses the Responses API. The hub API therefore also exposes `POST /responses`
 and the related get, delete, and input-items operations. The connection sets
@@ -136,11 +115,10 @@ required when the APIM gateway is publicly reachable. This is the default and ma
 centralized gateway serving multiple entity Azure subscriptions, where isolation is enforced
 with APIM Products, APIM Subscriptions, model allowlists, quotas, and policies.
 
-For a customer that requires private connectivity to APIM, set
-`enable_apim_private_endpoint = true` in both the hub and spoke deployments. That optional mode
-creates the hub VNet and APIM Gateway private endpoint, links `privatelink.azure-api.net`, and
-peers the Foundry spoke VNet to the hub. It changes only how the same APIM target hostname is
-resolved and reached; the Foundry connection metadata does not change.
+Private APIM connectivity requires the central managing team to provide the matching APIM
+private endpoint, DNS, and network path before the spoke sets `enable_apim_private_endpoint =
+true`. It changes only how the same APIM target hostname is resolved and reached; the Foundry
+connection metadata does not change.
 
 ### Centralized APIM across entity subscriptions
 
@@ -174,259 +152,111 @@ flowchart LR
   F2 -->|Entity B Product key| APIM
 ```
 
-#### Customer onboarding checklist
+The managing team supplies each entity with a Product-scoped APIM key, published API path,
+approved deployment alias, and inference API version. Product creation, model filtering,
+quotas, backend mapping, and telemetry remain central platform responsibilities and are outside
+the spoke Terraform.
 
-1. Create a dedicated APIM **Product** for the entity and require a subscription.
-2. Associate only the customer-facing AI API with that Product.
-3. Create a dedicated **product-scoped APIM subscription** for the entity. Do not use the APIM
-   master/all-access subscription: it reaches every API, and product policies aren't applied to
-   all-access or API-scoped subscriptions.
-4. Store that entity's APIM subscription key in only its Foundry `ApiManagement` connection.
-   Rotate the primary and secondary keys through the normal APIM key lifecycle.
-5. Configure the entity's approved deployment aliases and backend mappings in APIM policy or
-   named values. Do not expose physical PTU or backend deployment details to the customer.
-6. Filter both dynamic discovery operations by the calling subscription/Product.
-7. Enforce the same model allowlist again on every inference operation. Discovery filtering is
-   a user-experience feature, not an authorization boundary.
-8. Apply per-subscription token limits, quotas, and request-rate limits to inference operations.
-9. Remove the incoming subscription key before forwarding to the backend, and use APIM managed
-   identity for Azure OpenAI authentication.
-10. Test with an approved model, an unapproved model, an invalid key, and an exceeded quota
-    before giving the Foundry connection to the entity.
+## Customer Spoke Deployment
 
-See Microsoft's guidance for [APIM subscriptions](https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions),
-[Products](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-add-products),
-[`llm-token-limit`](https://learn.microsoft.com/en-us/azure/api-management/llm-token-limit-policy),
-and [`rate-limit-by-key`](https://learn.microsoft.com/en-us/azure/api-management/rate-limit-by-key-policy).
+The customer deploys only `spoke-private-agent`. The central managing team must provide an
+existing published APIM HTTPS endpoint, an entity Product-scoped subscription key, and an
+approved deployment alias before starting.
 
-#### Subscription-scoped dynamic discovery
+### Prerequisites
 
-Do not forward `GET /deployments` directly to the Azure Resource Manager list operation in a
-gateway shared across entity Azure subscriptions. That would disclose every backend deployment
-available to the APIM identity. Instead, APIM must identify the caller from the **APIM
-subscription** (`context.Subscription.Id`) and return only the logical deployments approved for
-that entity's Product.
+- **Terraform** >= 1.10 ([install](https://developer.hashicorp.com/terraform/install)).
+- **Azure CLI**, authenticated to the customer spoke subscription with `az login`.
+- `Contributor` plus `User Access Administrator` (or `Owner`) on the spoke subscription because
+  the deployment creates role assignments.
+- Non-overlapping VNet and subnet ranges approved by the customer network team.
+- Regional quota and availability for the jumpbox VM, Azure Storage, Azure AI Search, and Azure
+  Cosmos DB.
+- These values from the central managing team:
+  - APIM name, resource group, Azure subscription ID, and published API path.
+  - Entity Product-scoped APIM subscription key. Never use the APIM master key.
+  - Foundry connection name, approved deployment alias, and inference API version.
 
-Example result for Entity A:
+The APIM gateway must already expose the discovery and inference operations described in
+[How the Foundry APIM connection works](#how-the-foundry-apim-connection-works). The default
+deployment uses its public HTTPS endpoint and does not require APIM VNet peering or private DNS.
 
-```http
-GET /openai/deployments
-api-key: <entity-a-product-subscription-key>
-```
-
-```json
-{
-  "value": [
-    {
-      "name": "approved-gpt",
-      "properties": {
-        "model": {
-          "name": "gpt-5.1",
-          "version": "2025-11-13",
-          "format": "OpenAI"
-        }
-      }
-    }
-  ]
-}
-```
-
-Entity B can call the same URL with its own key and receive a different catalog. The matching
-`GET /deployments/{deploymentName}` operation must return the object only when that deployment
-is approved for the caller; otherwise it should return `404` without querying the backend.
-
-The catalog can be implemented with one of these patterns:
-
-- A separate customer API/path per Product, with a static APIM response generated from that
-  customer's approved aliases.
-- A shared API whose policy looks up a subscription ID in a centrally managed allowlist and
-  constructs the AzureOpenAI-format discovery response.
-- An external entitlement service called from APIM policy when the catalog changes too often
-  for named values or policy configuration.
-
-The current Terraform forwards discovery to ARM and is suitable only for the current single
-trusted APIM access scope. Before onboarding multiple entity Azure subscriptions, replace those
-discovery policies with one of the subscription-scoped patterns above.
-
-#### Enforce the allowlist on inference
-
-A caller can manually construct an inference request without first calling discovery. APIM must
-therefore validate the logical deployment on `POST /deployments/{deploymentName}/...` and the
-model field used by `POST /responses`, then reject anything outside the subscription's approved
-set. After validation, APIM can rewrite the logical alias to the physical PTU deployment and
-select the correct backend.
-
-Conceptual policy flow:
-
-```xml
-<inbound>
-  <base />
-  <!-- Resolve entitlements from context.Subscription.Id. -->
-  <choose>
-    <when condition="@(/* requested model is approved for this subscription */)">
-      <!-- Rewrite the public alias to the private backend deployment. -->
-    </when>
-    <otherwise>
-      <return-response>
-        <set-status code="403" reason="Model not approved for this subscription" />
-      </return-response>
-    </otherwise>
-  </choose>
-  <set-header name="api-key" exists-action="delete" />
-  <authentication-managed-identity resource="https://cognitiveservices.azure.com" />
-</inbound>
-```
-
-This is intentionally a policy outline, not a drop-in expression: the entitlement lookup and
-model extraction must match the customer's API shape, alias strategy, and policy-management
-process.
-
-#### Per-entity limits and observability
-
-Apply limits at Product, API, or operation scope and use the APIM subscription ID as the counter
-key so one entity cannot consume another entity's allocation:
-
-```xml
-<llm-token-limit
-  counter-key="@(context.Subscription.Id)"
-  tokens-per-minute="50000"
-  token-quota="10000000"
-  token-quota-period="Monthly"
-  estimate-prompt-tokens="true" />
-
-<rate-limit-by-key
-  counter-key="@(context.Subscription.Id)"
-  calls="120"
-  renewal-period="60" />
-```
-
-Use customer-specific values rather than these examples. Include the subscription ID, Product,
-logical model alias, backend selection, status code, latency, and token usage in central
-telemetry, but never log subscription keys or sensitive prompt content. In multi-region or
-multi-gateway APIM deployments, verify quota behavior carefully because counters are maintained
-per gateway rather than globally aggregated.
-
-## Prerequisites
-
-- **Terraform** ≥ 1.10 ([install](https://developer.hashicorp.com/terraform/install))
-- **Azure CLI** logged in: `az login`
-- An **existing hub APIM** instance and permission to read its subscription key
-- Sufficient quota in your target region for: 1 D-series VM (jumpbox), Cosmos DB, AI Search,
-  Storage, and the Azure OpenAI model capacity
-- Contributor + User Access Administrator (or Owner) on the target subscription (RBAC role
-  assignments are created)
-
-## Step 1 — Deploy the hub (model behind APIM)
-
-```pwsh
-cd hub-apim-openai
-```
-
-Non-secret config lives in per-environment files under `environments/`. Edit
-`environments/dev.tfvars` (or copy `environments/prod.tfvars` for another environment):
-
-| Variable | Set to |
-| -------- | ------ |
-| `subscription_id` | Your hub subscription ID |
-| `location` | Region for the Azure OpenAI account (must offer your model) |
-| `hub_apim_name` / `hub_apim_resource_group_name` | Your existing APIM instance |
-| `model_name` / `model_version` / `model_sku_name` / `model_capacity` | The model to deploy |
-| `api_path` | The APIM API path to expose the model under (e.g. `openai`) |
-| `enable_apim_private_endpoint` | `false` for the public APIM gateway (default); `true` only for optional private APIM connectivity |
-
-The hub apply also enables APIM's system-assigned identity, grants its Azure OpenAI role, imports
-the inference API, and creates the Responses and dynamic-discovery operations. The identity must
-be allowed to request both Cognitive Services data-plane and Azure Resource Manager tokens;
-the included role assignment supplies the required deployment read permissions.
-
-Deploy:
-
-```pwsh
-$env:ARM_SUBSCRIPTION_ID = "<your-hub-subscription-id>"
-terraform init
-terraform apply -var-file="environments/dev.tfvars"
-```
-
-## Step 2 — Set spoke secrets (never commit these)
-
-The spoke needs two secrets that must **not** live in a tfvars file: the hub APIM subscription
-key and the jumpbox admin password. Provide them as environment variables.
-
-A ready-to-edit helper is included:
-[`spoke-private-agent/set-secrets.example.ps1`](spoke-private-agent/set-secrets.example.ps1).
-Copy it, fill in your hub APIM details, then dot-source it:
+### Step 1 — Configure the spoke
 
 ```pwsh
 cd spoke-private-agent
-Copy-Item set-secrets.example.ps1 set-secrets.ps1   # set-secrets.ps1 is git-ignored
-# edit set-secrets.ps1: subscription id + APIM resource group/name
-. .\set-secrets.ps1                                 # note the leading dot — dot-source it
 ```
 
-This fetches the APIM subscription key, generates a compliant jumpbox password (printed once —
-**save it** for Bastion login), and exports `TF_VAR_apim_subscription_key`,
-`TF_VAR_jumpbox_admin_password`, and `ARM_SUBSCRIPTION_ID` into your shell.
-
-Prefer to do it manually instead? Set these three before `apply`:
-
-```pwsh
-$env:ARM_SUBSCRIPTION_ID           = "<subscription-id>"
-$env:TF_VAR_apim_subscription_key  = "<hub-apim-subscription-key>"
-$env:TF_VAR_jumpbox_admin_password = "<strong-password>"
-```
-
-## Step 3 — Deploy the spoke (private agent)
-
-Edit the non-secret config in `environments/dev.tfvars` — key values:
+Edit `environments/dev.tfvars` (or create another non-secret environment file):
 
 | Variable | Set to |
 | -------- | ------ |
-| `subscription_id` / `location` / `resource_group_name` | Your spoke subscription, region, RG |
-| `cosmos_location` | Optional approved fallback region when Cosmos DB capacity is unavailable in the Foundry region; omit it to use `location` |
-| `vnet_address_space` and the four `*_subnet_prefix` values | A range that does **not** overlap your hub VNet |
-| `hub_apim_name` / `hub_apim_resource_group_name` / `hub_apim_subscription_id` | Your hub APIM |
-| `enable_apim_private_endpoint` | Keep `false` for a published APIM gateway; set `true` only with the matching hub private endpoint |
-| `apim_openai_connection_name` | Name for the Foundry connection (e.g. `hub-apim-openai`) |
-| `apim_openai_path` | Must match the hub `api_path` from Step 1 |
-| `apim_inference_api_version` | Inference API version used by Agent Service (`2025-03-01-preview`) |
+| `subscription_id` / `location` / `resource_group_name` | Customer spoke subscription, Foundry region, and resource group |
+| `name_prefix` / `project_name_prefix` | Short, unique customer naming prefixes |
+| `vnet_address_space` and the four `*_subnet_prefix` values | Customer-approved, non-overlapping private ranges |
+| `hub_apim_name` / `hub_apim_resource_group_name` / `hub_apim_subscription_id` | Central APIM details supplied by the managing team |
+| `enable_apim_private_endpoint` | Keep `false` for the published APIM HTTPS gateway |
+| `apim_openai_connection_name` | Foundry connection name, for example `hub-apim-openai` |
+| `apim_openai_path` | Published APIM API path, for example `openai` |
+| `apim_inference_api_version` | Version supplied by the managing team, currently `2025-03-01-preview` in the reference setup |
+| `enable_jumpbox` | Keep `true` to administer the private Foundry project through Bastion |
 
-Do not add a static model list for this setup. The connection intentionally relies on the hub
-APIM's `/deployments` operations. If you replace those standard paths with custom paths, add
-serialized `modelDiscovery` metadata as documented in the official APIM connection schema.
+Do not add secrets to tfvars. Cosmos DB is required for thread storage by this network-secured
+Standard Agent capability host; Microsoft states that all three BYO resources are required in
+[Set up private networking for Foundry Agent Service](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/virtual-networks).
 
-Cosmos DB cannot be omitted from this Standard Agent setup because the capability host uses it
-for thread and agent-entity storage. If the selected Foundry region has no Cosmos capacity, set
-`cosmos_location` to an alternate region approved by the managing team after reviewing data
-residency, latency, and service availability. The Cosmos private endpoint remains in the spoke
-VNet, and the Foundry connection records the Cosmos account's actual region.
+### Step 2 — Set secrets
 
-Deploy:
+Set the customer spoke subscription, entity Product key, and a strong jumpbox password in the
+current PowerShell session:
+
+```pwsh
+$env:ARM_SUBSCRIPTION_ID           = "<customer-spoke-subscription-id>"
+$env:TF_VAR_apim_subscription_key  = "<entity-product-scoped-apim-key>"
+$env:TF_VAR_jumpbox_admin_password = "<strong-password>"
+```
+
+Do not retrieve or use the APIM master key. CI/CD users should store these values in the GitHub
+Environment secrets described below instead of setting them locally.
+
+### Step 3 — Validate, plan, and deploy
 
 ```pwsh
 terraform init
-terraform apply -var-file="environments/dev.tfvars"
+terraform fmt -check -recursive
+terraform validate
+terraform plan `
+  -var-file="environments/dev.tfvars" `
+  -var="subscription_id=$env:ARM_SUBSCRIPTION_ID" `
+  -out="spoke.tfplan"
+terraform show "spoke.tfplan"
+terraform apply "spoke.tfplan"
 ```
 
-Capture the outputs you'll need next:
+Review the plan before applying it. The explicit `subscription_id` override ensures Terraform
+targets the same subscription selected for authentication.
+
+Capture the outputs needed for access and agent configuration:
 
 ```pwsh
-terraform output foundry_account_name   # -> used to build the project endpoint
+terraform output foundry_account_name
 terraform output project_name
 terraform output jumpbox_vm_name
+terraform output apim_gateway_url
 ```
 
-## Step 4 — Connect to the jumpbox
+### Step 4 — Connect to the jumpbox
 
 The Foundry account has `publicNetworkAccess=Disabled`, so agents can only be created/used from
 **inside the spoke VNet**. Use Azure Bastion to reach the jumpbox:
 
 1. Azure portal → the jumpbox VM (`terraform output jumpbox_vm_name`) → **Connect → Bastion**.
-2. User: `azureuser` (or your `jumpbox_admin_username`); Password: the one printed in Step 2.
+2. User: `azureuser` (or your `jumpbox_admin_username`); password: the value set in Step 2.
 3. On the VM, install [Python 3.12+](https://www.python.org/downloads/) and
    [uv](https://docs.astral.sh/uv/). The VM's managed identity is already authorized by the
    spoke Terraform, so no `az login` is required.
 
-## Step 5 — Create and use the agent
+### Step 5 — Validate and use the agent
 
 Copy the [`agent-samples/`](agent-samples) folder onto the jumpbox (or `git clone` this repo
 there), then follow [`agent-samples/README.md`](agent-samples/README.md):
@@ -521,19 +351,43 @@ Two workflows are included under [`.github/workflows/`](.github/workflows):
 
 ## Clean up
 
-Destroy in reverse order (spoke first, then hub). Secrets must be present for `destroy` too:
+Destroy only the customer spoke. The same Terraform secrets must be present for `destroy`:
 
 ```pwsh
 cd spoke-private-agent
-. .\set-secrets.ps1
-terraform destroy -var-file="environments/dev.tfvars"
-
-cd ..\hub-apim-openai
-terraform destroy -var-file="environments/dev.tfvars"
+$env:ARM_SUBSCRIPTION_ID           = "<customer-spoke-subscription-id>"
+$env:TF_VAR_apim_subscription_key  = "<entity-product-scoped-apim-key>"
+$env:TF_VAR_jumpbox_admin_password = "<jumpbox-password>"
+terraform destroy `
+  -var-file="environments/dev.tfvars" `
+  -var="subscription_id=$env:ARM_SUBSCRIPTION_ID"
 ```
+
+This does not modify or destroy the central APIM or its Azure OpenAI backends.
 
 > If `destroy` stalls on network resources, a service-association-link on the agent subnet may
 > still be releasing. Wait a few minutes and retry.
+
+## Reference Hub for Isolated Testing Only
+
+The `hub-apim-openai` module exists to validate the complete pattern when no central platform
+gateway is available. It creates an Azure OpenAI deployment and modifies an existing APIM by
+enabling its system-assigned identity, importing the inference API, creating Responses and
+discovery operations, and adding backend policies and role assignments.
+
+Do not apply this module to a shared customer or platform APIM unless its managing team has
+explicitly approved the Terraform ownership and reviewed the plan. It is not part of the
+customer spoke deployment or spoke pipeline.
+
+For an isolated test environment, configure `hub-apim-openai/environments/dev.tfvars`, then run:
+
+```pwsh
+cd hub-apim-openai
+$env:ARM_SUBSCRIPTION_ID = "<isolated-test-hub-subscription-id>"
+terraform init
+terraform plan -var-file="environments/dev.tfvars" -out="hub.tfplan"
+terraform apply "hub.tfplan"
+```
 
 ## References
 

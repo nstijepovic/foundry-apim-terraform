@@ -20,7 +20,7 @@ from the spoke deployment:
 
 - VM name: `terraform output jumpbox_vm_name` (in `../spoke-private-agent`)
 - Username: your `jumpbox_admin_username` (default `azureuser`)
-- Password: printed by `set-secrets.ps1` during the spoke deploy — **save it**
+- Password: the `TF_VAR_jumpbox_admin_password` value supplied during the spoke deployment
 
 ## Prerequisites (on the jumpbox)
 

@@ -100,13 +100,10 @@ JSON-serialized string in the ARM/Bicep/Terraform connection resource and must b
 the approved catalog changes. In both modes, APIM must expose the required inference operations
 and enforce model authorization independently of discovery.
 
-Agent execution uses the Responses API. The hub API therefore also exposes `POST /responses`
-and the related get, delete, and input-items operations. The connection sets
-`inferenceAPIVersion = "2025-03-01-preview"`, which Foundry appends to inference requests. The
-base Azure OpenAI API is imported from Microsoft's APIM-compatible stable OpenAPI document, as
-described in [Import an Azure OpenAI API as a REST API](https://learn.microsoft.com/en-us/azure/api-management/azure-openai-api-from-specification);
-the Responses operations are managed explicitly because the published preview OpenAPI document
-currently contains a schema construct that APIM rejects during import.
+Agent execution uses the Responses API. The central APIM must expose `POST /responses` and the
+related get, delete, and input-items operations, and it must support the `inferenceAPIVersion`
+configured on the Foundry connection. The reference setup uses `2025-03-01-preview`, which
+Foundry appends to inference requests.
 
 ### Optional private APIM connectivity
 

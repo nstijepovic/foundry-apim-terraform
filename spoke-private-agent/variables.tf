@@ -74,16 +74,16 @@ variable "pe_subnet_prefix" {
 }
 
 # ---------------------------------------------------------------------------
-# Hub APIM (existing) private endpoint integration
+# Optional private connectivity to the existing hub APIM
 # ---------------------------------------------------------------------------
 variable "enable_apim_private_endpoint" {
-  description = "When true, adds a private endpoint + privatelink.azure-api.net DNS zone for the existing hub APIM."
+  description = "When true, peers the spoke to the hub APIM private endpoint network and links private DNS. Leave false when the APIM gateway is publicly reachable."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "hub_apim_name" {
-  description = "Name of the existing hub API Management instance to expose privately."
+  description = "Name of the existing hub API Management instance used by the Foundry connection."
   type        = string
   default     = "hun-apim-test-007"
 }

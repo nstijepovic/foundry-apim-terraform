@@ -1,16 +1,17 @@
-# Private Network Foundry Agent behind Azure API Management
+# Microsoft Foundry Agent behind a Central API Management Gateway
 
 Deploy a **private-network Microsoft Foundry standard agent** (spoke) that consumes an LLM
-served through an **existing Azure API Management (APIM) gateway** (hub). All traffic stays on
-private networking — the Foundry account has public access disabled, and the agent reaches the
-model over VNet peering to the hub APIM private endpoint.
+served through an **existing Azure API Management (APIM) gateway**. By default, Foundry calls
+APIM's published public HTTPS endpoint; the APIM instance, Azure OpenAI resources, PTU
+deployments, and backend network remain inaccessible to the customer. The Foundry account can
+still use its own private network for agents and customer-owned resources.
 
 This repo is split into three parts you deploy/run in order:
 
 | # | Folder | What it does |
 | - | ------ | ------------ |
-| 1 | [`hub-apim-openai/`](hub-apim-openai) | Creates an Azure OpenAI model and wires it behind your existing hub APIM (imports the inference API, sets the subscription-key policy, adds a private endpoint for the gateway). |
-| 2 | [`spoke-private-agent/`](spoke-private-agent) | Deploys the private Foundry account + project (BYO Storage/Search/Cosmos), the spoke VNet, VNet peering to the hub, private DNS, an APIM **connection**, and a **jumpbox** VM (reached via Azure Bastion). |
+| 1 | [`hub-apim-openai/`](hub-apim-openai) | Creates an Azure OpenAI model and wires it behind your existing hub APIM (imports inference and discovery operations and configures managed-identity backend access). |
+| 2 | [`spoke-private-agent/`](spoke-private-agent) | Deploys the private Foundry account + project (BYO Storage/Search/Cosmos), its own VNet, an APIM **connection**, and a **jumpbox** VM (reached via Azure Bastion). |
 | 3 | [`agent-samples/`](agent-samples) | Python scripts to create and chat with an agent that routes its model calls through the APIM connection. Run these **from the jumpbox**. |
 
 > `code/` is early single-folder scaffolding and is **not** part of the supported flow — ignore it.
@@ -19,8 +20,8 @@ This repo is split into three parts you deploy/run in order:
 
 ```mermaid
 flowchart LR
-    subgraph Hub["Hub VNet (existing)"]
-        APIM["API Management\n(private endpoint)"]
+  subgraph Platform["Central AI platform"]
+    APIM["API Management\n(public gateway endpoint)"]
         AOAI["Azure OpenAI\n(gpt model)"]
         APIM --> AOAI
     end
@@ -31,8 +32,7 @@ flowchart LR
         Foundry --- Conn
     end
     JB -->|create/chat agent| Foundry
-    Conn -->|hub-apim-openai/&lt;model&gt;| APIM
-    Spoke <-->|VNet peering| Hub
+    Conn -->|HTTPS + customer APIM key| APIM
 ```
 
 The agent references its model as `<connection-name>/<deployment-name>` (e.g.
@@ -117,6 +117,19 @@ described in [Import an Azure OpenAI API as a REST API](https://learn.microsoft.
 the Responses operations are managed explicitly because the published preview OpenAPI document
 currently contains a schema construct that APIM rejects during import.
 
+### Optional private APIM connectivity
+
+No APIM private endpoint, VNet peering, private DNS zone, or customer-side IP allocation is
+required when the APIM gateway is publicly reachable. This is the default and matches a
+centralized multi-tenant gateway where customer isolation is enforced with APIM Products,
+Subscriptions, model allowlists, quotas, and policies.
+
+For a customer that requires private connectivity to APIM, set
+`enable_apim_private_endpoint = true` in both the hub and spoke deployments. That optional mode
+creates the hub VNet and APIM Gateway private endpoint, links `privatelink.azure-api.net`, and
+peers the Foundry spoke VNet to the hub. It changes only how the same APIM target hostname is
+resolved and reached; the Foundry connection metadata does not change.
+
 ## Prerequisites
 
 - **Terraform** ≥ 1.10 ([install](https://developer.hashicorp.com/terraform/install))
@@ -143,6 +156,7 @@ Non-secret config lives in per-environment files under `environments/`. Edit
 | `hub_apim_name` / `hub_apim_resource_group_name` | Your existing APIM instance |
 | `model_name` / `model_version` / `model_sku_name` / `model_capacity` | The model to deploy |
 | `api_path` | The APIM API path to expose the model under (e.g. `openai`) |
+| `enable_apim_private_endpoint` | `false` for the public APIM gateway (default); `true` only for optional private APIM connectivity |
 
 The hub apply also enables APIM's system-assigned identity, grants its Azure OpenAI role, imports
 the inference API, and creates the Responses and dynamic-discovery operations. The identity must
@@ -194,6 +208,7 @@ Edit the non-secret config in `environments/dev.tfvars` — key values:
 | `subscription_id` / `location` / `resource_group_name` | Your spoke subscription, region, RG |
 | `vnet_address_space` and the four `*_subnet_prefix` values | A range that does **not** overlap your hub VNet |
 | `hub_apim_name` / `hub_apim_resource_group_name` / `hub_apim_subscription_id` | Your hub APIM |
+| `enable_apim_private_endpoint` | Keep `false` for a published APIM gateway; set `true` only with the matching hub private endpoint |
 | `apim_openai_connection_name` | Name for the Foundry connection (e.g. `hub-apim-openai`) |
 | `apim_openai_path` | Must match the hub `api_path` from Step 1 |
 | `apim_inference_api_version` | Inference API version used by Agent Service (`2025-03-01-preview`) |

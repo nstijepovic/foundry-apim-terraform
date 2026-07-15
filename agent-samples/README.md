@@ -99,7 +99,9 @@ path selected by `deploymentInPath=true`:
 POST https://<apim-gateway>/<api-path>/deployments/<model>/chat/completions?api-version=<version>
 ```
 
-All traffic stays private: spoke -> VNet peering -> hub APIM private endpoint.
+The Foundry project remains private, while its model request uses the central
+APIM public gateway by default. Optional APIM private endpoint connectivity can
+be enabled without changing the connection or model reference.
 See Microsoft's [AI gateway guide](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/ai-gateway)
 and [APIM connection schema](https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/01-connections/apim/APIM-Connection-Objects.md).
 

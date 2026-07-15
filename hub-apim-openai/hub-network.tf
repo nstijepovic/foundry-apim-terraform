@@ -1,6 +1,6 @@
-########## Hub networking: VNet + APIM Gateway private endpoint + private DNS ##########
-# Shared hub network so spokes can reach the hub APIM privately over VNet peering.
-# The hub VNet is placed in the APIM's region (UAE North), colocated in the APIM RG.
+########## Optional private APIM connectivity ##########
+# Disabled by default. Enable only when the Foundry environment must reach APIM
+# through a private endpoint instead of APIM's public gateway.
 
 resource "azurerm_virtual_network" "hub" {
   count               = var.enable_apim_private_endpoint ? 1 : 0

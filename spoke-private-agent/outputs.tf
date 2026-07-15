@@ -69,8 +69,8 @@ output "apim_private_dns_zone_id" {
 }
 
 output "apim_gateway_url" {
-  description = "Hub APIM gateway URL (reachable privately from the VNet)."
-  value       = var.enable_apim_private_endpoint ? "https://${var.hub_apim_name}.azure-api.net" : null
+  description = "Hub APIM gateway URL used by the Foundry connection."
+  value       = "https://${var.hub_apim_name}.azure-api.net"
 }
 
 output "jumpbox_vm_name" {

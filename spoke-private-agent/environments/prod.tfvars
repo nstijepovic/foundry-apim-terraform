@@ -23,7 +23,7 @@ vnet_address_space  = ["<10.x.x.0/24>"]
 agent_subnet_prefix = "<10.x.x.0/26>"
 pe_subnet_prefix    = "<10.x.x.64/26>"
 
-enable_apim_private_endpoint = true
+enable_apim_private_endpoint = false
 hub_apim_name                = "<prod-apim-name>"
 hub_apim_resource_group_name = "<prod-apim-resource-group>"
 hub_apim_subscription_id     = "<prod-subscription-id>"

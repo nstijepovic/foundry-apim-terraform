@@ -74,12 +74,12 @@ variable "openai_spec_url" {
   default     = "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/cognitiveservices/data-plane/AzureOpenAI/inference/stable/2024-10-21/inference.json"
 }
 
-########## Hub networking (APIM private endpoint + VNet for spoke peering) ##########
+########## Optional private APIM connectivity ##########
 
 variable "enable_apim_private_endpoint" {
-  description = "When true, creates the hub VNet + APIM Gateway private endpoint + private DNS zone for spoke peering."
+  description = "When true, creates a hub VNet, APIM Gateway private endpoint, private DNS, and supporting spoke peering. Leave false when Foundry uses the public APIM gateway."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "hub_vnet_name" {

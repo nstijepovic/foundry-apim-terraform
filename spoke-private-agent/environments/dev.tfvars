@@ -24,7 +24,7 @@ vnet_address_space  = ["10.252.128.0/24"]
 agent_subnet_prefix = "10.252.128.0/26"
 pe_subnet_prefix    = "10.252.128.64/26"
 
-enable_apim_private_endpoint = true
+enable_apim_private_endpoint = false
 hub_apim_name                = "hun-apim-test-007"
 hub_apim_resource_group_name = "hub-apim-test"
 hub_apim_subscription_id     = "fbfbfbe5-9ee2-43ed-b514-f3266c2193ab"

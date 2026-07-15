@@ -1,8 +1,7 @@
 # ---------------------------------------------------------------------------
-# Hub APIM reachability (canonical hub-spoke): the APIM private endpoint lives
-# in the HUB VNet (created by the hub-apim-openai config). Here we peer the
-# spoke VNet to the hub VNet and link the hub's privatelink.azure-api.net zone
-# to the spoke VNet, so the agent subnet resolves + reaches APIM privately.
+# Optional private APIM reachability. When disabled, the Foundry connection
+# uses the same target URL through APIM's public gateway and none of these
+# peering or private DNS resources are created.
 # ---------------------------------------------------------------------------
 data "azurerm_virtual_network" "hub" {
   count               = var.enable_apim_private_endpoint ? 1 : 0
@@ -56,10 +55,9 @@ resource "azurerm_private_dns_zone_virtual_network_link" "apim_spoke" {
 }
 
 # ---------------------------------------------------------------------------
-# THIS is the APIM "model connection" in the spoke: a Foundry ApiManagement
-# connection whose target is the hub APIM gateway (resolved privately via the
-# linked DNS zone + peering above). Through it the agent calls the model that
-# lives behind the hub APIM (gpt-5.1), instead of the account-local deployment.
+# Foundry ApiManagement connection whose target is the hub APIM gateway.
+# Network resolution is independent of the connection: public APIM works by
+# default, while the optional resources above override DNS to the private IP.
 #
 # Auth note: Foundry sends the key in the `api-key` header. The hub APIM API's
 # subscription key header must therefore be `api-key` (set

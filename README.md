@@ -121,14 +121,168 @@ currently contains a schema construct that APIM rejects during import.
 
 No APIM private endpoint, VNet peering, private DNS zone, or customer-side IP allocation is
 required when the APIM gateway is publicly reachable. This is the default and matches a
-centralized multi-tenant gateway where customer isolation is enforced with APIM Products,
-Subscriptions, model allowlists, quotas, and policies.
+centralized gateway serving multiple entity Azure subscriptions, where isolation is enforced
+with APIM Products, APIM Subscriptions, model allowlists, quotas, and policies.
 
 For a customer that requires private connectivity to APIM, set
 `enable_apim_private_endpoint = true` in both the hub and spoke deployments. That optional mode
 creates the hub VNet and APIM Gateway private endpoint, links `privatelink.azure-api.net`, and
 peers the Foundry spoke VNet to the hub. It changes only how the same APIM target hostname is
 resolved and reached; the Foundry connection metadata does not change.
+
+### Centralized APIM across entity subscriptions
+
+This is a **single Entra tenant with multiple Azure subscriptions**, not a multi-tenant design.
+Each entity gets its own Azure subscription and Foundry environment. The centralized APIM
+gateway remains the governance boundary and exposes only a published endpoint plus an
+entity-scoped credential. Entities receive no APIM management-plane role and no access to Azure
+OpenAI, PTU deployments, or platform networking.
+
+Two different kinds of subscription are involved:
+
+- **Azure subscription:** the entity-owned boundary containing its Foundry environment and any
+  entity-owned resources.
+- **APIM subscription:** the gateway access contract and key scoped to the entity's APIM Product.
+  It is not an Azure subscription and does not grant Azure resource access.
+
+```mermaid
+flowchart LR
+  F1["Entity A Azure subscription\nFoundry"] -->|"Entity A APIM product key"| APIM["Central APIM gateway"]
+  F2["Entity B Azure subscription\nFoundry"] -->|"Entity B APIM product key"| APIM
+    APIM -->|"approved deployment mapping"| PTU["Central Azure OpenAI / PTU"]
+```
+
+#### Customer onboarding checklist
+
+1. Create a dedicated APIM **Product** for the entity and require a subscription.
+2. Associate only the customer-facing AI API with that Product.
+3. Create a dedicated **product-scoped APIM subscription** for the entity. Do not use the APIM
+   master/all-access subscription: it reaches every API, and product policies aren't applied to
+   all-access or API-scoped subscriptions.
+4. Store that entity's APIM subscription key in only its Foundry `ApiManagement` connection.
+   Rotate the primary and secondary keys through the normal APIM key lifecycle.
+5. Configure the entity's approved deployment aliases and backend mappings in APIM policy or
+   named values. Do not expose physical PTU or backend deployment details to the customer.
+6. Filter both dynamic discovery operations by the calling subscription/Product.
+7. Enforce the same model allowlist again on every inference operation. Discovery filtering is
+   a user-experience feature, not an authorization boundary.
+8. Apply per-subscription token limits, quotas, and request-rate limits to inference operations.
+9. Remove the incoming subscription key before forwarding to the backend, and use APIM managed
+   identity for Azure OpenAI authentication.
+10. Test with an approved model, an unapproved model, an invalid key, and an exceeded quota
+    before giving the Foundry connection to the entity.
+
+See Microsoft's guidance for [APIM subscriptions](https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions),
+[Products](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-add-products),
+[`llm-token-limit`](https://learn.microsoft.com/en-us/azure/api-management/llm-token-limit-policy),
+and [`rate-limit-by-key`](https://learn.microsoft.com/en-us/azure/api-management/rate-limit-by-key-policy).
+
+#### Subscription-scoped dynamic discovery
+
+Do not forward `GET /deployments` directly to the Azure Resource Manager list operation in a
+gateway shared across entity Azure subscriptions. That would disclose every backend deployment
+available to the APIM identity. Instead, APIM must identify the caller from the **APIM
+subscription** (`context.Subscription.Id`) and return only the logical deployments approved for
+that entity's Product.
+
+Example result for Entity A:
+
+```http
+GET /openai/deployments
+api-key: <entity-a-product-subscription-key>
+```
+
+```json
+{
+  "value": [
+    {
+      "name": "approved-gpt",
+      "properties": {
+        "model": {
+          "name": "gpt-5.1",
+          "version": "2025-11-13",
+          "format": "OpenAI"
+        }
+      }
+    }
+  ]
+}
+```
+
+Entity B can call the same URL with its own key and receive a different catalog. The matching
+`GET /deployments/{deploymentName}` operation must return the object only when that deployment
+is approved for the caller; otherwise it should return `404` without querying the backend.
+
+The catalog can be implemented with one of these patterns:
+
+- A separate customer API/path per Product, with a static APIM response generated from that
+  customer's approved aliases.
+- A shared API whose policy looks up a subscription ID in a centrally managed allowlist and
+  constructs the AzureOpenAI-format discovery response.
+- An external entitlement service called from APIM policy when the catalog changes too often
+  for named values or policy configuration.
+
+The current Terraform forwards discovery to ARM and is suitable only for the current single
+trusted APIM access scope. Before onboarding multiple entity Azure subscriptions, replace those
+discovery policies with one of the subscription-scoped patterns above.
+
+#### Enforce the allowlist on inference
+
+A caller can manually construct an inference request without first calling discovery. APIM must
+therefore validate the logical deployment on `POST /deployments/{deploymentName}/...` and the
+model field used by `POST /responses`, then reject anything outside the subscription's approved
+set. After validation, APIM can rewrite the logical alias to the physical PTU deployment and
+select the correct backend.
+
+Conceptual policy flow:
+
+```xml
+<inbound>
+  <base />
+  <!-- Resolve entitlements from context.Subscription.Id. -->
+  <choose>
+    <when condition="@(/* requested model is approved for this subscription */)">
+      <!-- Rewrite the public alias to the private backend deployment. -->
+    </when>
+    <otherwise>
+      <return-response>
+        <set-status code="403" reason="Model not approved for this subscription" />
+      </return-response>
+    </otherwise>
+  </choose>
+  <set-header name="api-key" exists-action="delete" />
+  <authentication-managed-identity resource="https://cognitiveservices.azure.com" />
+</inbound>
+```
+
+This is intentionally a policy outline, not a drop-in expression: the entitlement lookup and
+model extraction must match the customer's API shape, alias strategy, and policy-management
+process.
+
+#### Per-entity limits and observability
+
+Apply limits at Product, API, or operation scope and use the APIM subscription ID as the counter
+key so one entity cannot consume another entity's allocation:
+
+```xml
+<llm-token-limit
+  counter-key="@(context.Subscription.Id)"
+  tokens-per-minute="50000"
+  token-quota="10000000"
+  token-quota-period="Monthly"
+  estimate-prompt-tokens="true" />
+
+<rate-limit-by-key
+  counter-key="@(context.Subscription.Id)"
+  calls="120"
+  renewal-period="60" />
+```
+
+Use customer-specific values rather than these examples. Include the subscription ID, Product,
+logical model alias, backend selection, status code, latency, and token usage in central
+telemetry, but never log subscription keys or sensitive prompt content. In multi-region or
+multi-gateway APIM deployments, verify quota behavior carefully because counters are maintained
+per gateway rather than globally aggregated.
 
 ## Prerequisites
 

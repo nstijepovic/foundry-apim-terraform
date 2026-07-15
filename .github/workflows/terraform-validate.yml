@@ -1,23 +1,28 @@
 name: Validate Spoke
 
 # Fast checks on every PR / push that touches the spoke Terraform: formatting and
-# a provider-less validate. No cloud credentials or state required.
+# validation. No cloud credentials or state required.
 
 on:
   pull_request:
     paths:
       - "spoke-private-agent/**"
+      - ".github/workflows/terraform-deploy.yml"
       - ".github/workflows/terraform-validate.yml"
   push:
     branches: [main]
     paths:
       - "spoke-private-agent/**"
+      - ".github/workflows/terraform-deploy.yml"
+      - ".github/workflows/terraform-validate.yml"
 
 permissions:
   contents: read
 
 env:
   TF_VERSION: "1.10.5"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
 
 jobs:
   validate:
@@ -28,10 +33,12 @@ jobs:
         working-directory: spoke-private-agent
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 

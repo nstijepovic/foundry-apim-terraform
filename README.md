@@ -382,6 +382,7 @@ Edit the non-secret config in `environments/dev.tfvars` — key values:
 | Variable | Set to |
 | -------- | ------ |
 | `subscription_id` / `location` / `resource_group_name` | Your spoke subscription, region, RG |
+| `cosmos_location` | Optional approved fallback region when Cosmos DB capacity is unavailable in the Foundry region; omit it to use `location` |
 | `vnet_address_space` and the four `*_subnet_prefix` values | A range that does **not** overlap your hub VNet |
 | `hub_apim_name` / `hub_apim_resource_group_name` / `hub_apim_subscription_id` | Your hub APIM |
 | `enable_apim_private_endpoint` | Keep `false` for a published APIM gateway; set `true` only with the matching hub private endpoint |
@@ -392,6 +393,12 @@ Edit the non-secret config in `environments/dev.tfvars` — key values:
 Do not add a static model list for this setup. The connection intentionally relies on the hub
 APIM's `/deployments` operations. If you replace those standard paths with custom paths, add
 serialized `modelDiscovery` metadata as documented in the official APIM connection schema.
+
+Cosmos DB cannot be omitted from this Standard Agent setup because the capability host uses it
+for thread and agent-entity storage. If the selected Foundry region has no Cosmos capacity, set
+`cosmos_location` to an alternate region approved by the managing team after reviewing data
+residency, latency, and service availability. The Cosmos private endpoint remains in the spoke
+VNet, and the Foundry connection records the Cosmos account's actual region.
 
 Deploy:
 
@@ -451,35 +458,25 @@ There is **no committed `backend.tf`**, so local runs stay backendless (local st
 workflow generates a `backend.tf` at runtime and points it at your Storage account — so the same
 code works both ways.
 
-### Bootstrap the state Storage account (run once)
-
-```pwsh
-$rg="rg-tfstate"; $sa="sttfstate$(Get-Random -Maximum 99999)"; $loc="eastus2"
-az group create -n $rg -l $loc
-# AAD-only (no storage keys), TLS1.2, no public blob access
-az storage account create -n $sa -g $rg -l $loc --sku Standard_LRS --kind StorageV2 `
-  --min-tls-version TLS1_2 --allow-blob-public-access false --allow-shared-key-access false
-az storage container create --name tfstate --account-name $sa --auth-mode login
-# Versioning + soft delete (recover a bad state)
-az storage account blob-service-properties update -n $sa -g $rg `
-  --enable-versioning true --enable-delete-retention true --delete-retention-days 7
-# Give the deploy identity (and yourself) data-plane access
-az role assignment create --assignee "<ci-or-your-objectId>" `
-  --role "Storage Blob Data Contributor" `
-  --scope $(az storage account show -n $sa -g $rg --query id -o tsv)
-```
-
-Use the resulting `$rg`, `$sa`, and container name as the GitHub `TFSTATE_*` variables below.
-The workflow stores one blob per environment: `spoke-private-agent-<env>.tfstate`.
+The pipeline expects a platform-managed Azure Storage account and blob container for Terraform
+state. Provision them before configuring GitHub, disable shared-key access, enable blob
+versioning and soft delete, and grant the deployment identity **Storage Blob Data Contributor**
+on the account or container. The workflow stores one blob per environment:
+`spoke-private-agent-<env>.tfstate`.
 
 To adopt remote state for **local** runs too, create a `backend.tf` (it's git-ignored) and run
 `terraform init -migrate-state -backend-config=...` with the same values.
 
 ## Deploy the spoke via GitHub Actions (optional)
 
-The pipeline covers the **spoke** only. The hub (`hub-apim-openai`) is deployed manually — it
-mostly exists to expose the model connection for testing — so deploy it once locally (Step 1)
-before running the spoke pipeline.
+The pipeline covers the **spoke** only and expects the central APIM gateway, entity Product
+subscription, and approved model deployment to already be available. Do not deploy the
+`hub-apim-openai` reference configuration against a shared platform APIM.
+
+> **CI/CD ownership:** This workflow is an optional basic deployment example. The managing team
+> is responsible for provisioning and governing the state backend, OIDC identity and federated
+> credentials, GitHub Environments and secrets, approval rules, branch protections, and runner
+> policy. An entity can deploy the spoke locally when managed CI/CD has not been provided.
 
 Two workflows are included under [`.github/workflows/`](.github/workflows):
 
@@ -491,9 +488,8 @@ Two workflows are included under [`.github/workflows/`](.github/workflows):
 
 ### One-time setup
 
-1. **Create the state Storage account** (once) and a container, e.g. `tfstate`. Lock it down
-   (RBAC/AAD auth, versioning, soft delete). State holds secrets in plaintext — treat it like a
-   vault.
+1. **Provide the state backend** described above and record its resource group, Storage account,
+  and container names.
 2. **Create an OIDC identity** — an Entra app registration (or user-assigned managed identity)
    with a **federated credential** for this repo/environment, and grant it `Contributor` +
    `User Access Administrator` on the target subscription (RBAC assignments are created), plus
@@ -510,8 +506,10 @@ Two workflows are included under [`.github/workflows/`](.github/workflows):
    | Secret | `TF_VAR_APIM_SUBSCRIPTION_KEY` | Hub APIM subscription key |
    | Secret | `TF_VAR_JUMPBOX_ADMIN_PASSWORD` | Jumpbox admin password |
 
-   Non-secret config stays in `spoke-private-agent/environments/<env>.tfvars`; secrets stay in
-   Environment secrets — the workflow maps them to `TF_VAR_*` automatically.
+  Non-secret config stays in `spoke-private-agent/environments/<env>.tfvars`; secrets stay in
+  Environment secrets — the workflow maps them to `TF_VAR_*` automatically. The workflow also
+  overrides `subscription_id` with `AZURE_SUBSCRIPTION_ID`, preventing tfvars from selecting a
+  different deployment subscription than the OIDC login.
 
 4. **Run it:** Actions → *Deploy Spoke (Private Agent)* → *Run workflow* → pick environment and
    `plan`/`apply`/`destroy`.

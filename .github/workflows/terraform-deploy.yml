@@ -49,6 +49,8 @@ concurrency:
 
 env:
   TF_VERSION: "1.10.5"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
   # Provider auth via OIDC (azurerm + azapi honor these).
   ARM_USE_OIDC: "true"
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -68,19 +70,34 @@ jobs:
         working-directory: spoke-private-agent
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Azure login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@1384c340ab2dda50fed2bee3041d1d87018aa5e8 # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Validate deployment configuration
+        env:
+          TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+          TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+          TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
+        run: |
+          for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID TF_VAR_apim_subscription_key TF_VAR_jumpbox_admin_password TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required GitHub Environment configuration: ${name}" >&2
+              exit 1
+            fi
+          done
 
       - name: Configure remote state backend
         run: |
@@ -91,22 +108,26 @@ jobs:
           EOF
 
       - name: Terraform Init
+        env:
+          TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+          TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+          TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
         run: |
           terraform init \
-            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="resource_group_name=${TFSTATE_RESOURCE_GROUP}" \
+            -backend-config="storage_account_name=${TFSTATE_STORAGE_ACCOUNT}" \
+            -backend-config="container_name=${TFSTATE_CONTAINER}" \
             -backend-config="key=spoke-private-agent-${{ inputs.environment }}.tfstate" \
             -backend-config="use_azuread_auth=true"
 
       - name: Terraform Plan
         if: inputs.action == 'plan' || inputs.action == 'apply'
-        run: terraform plan -input=false -var-file="environments/${{ inputs.environment }}.tfvars" -out=tfplan
+        run: terraform plan -var-file="environments/${{ inputs.environment }}.tfvars" -var="subscription_id=${ARM_SUBSCRIPTION_ID}" -out=tfplan
 
       - name: Terraform Apply
         if: inputs.action == 'apply'
-        run: terraform apply -input=false tfplan
+        run: terraform apply tfplan
 
       - name: Terraform Destroy
         if: inputs.action == 'destroy'
-        run: terraform destroy -input=false -auto-approve -var-file="environments/${{ inputs.environment }}.tfvars"
+        run: terraform destroy -auto-approve -var-file="environments/${{ inputs.environment }}.tfvars" -var="subscription_id=${ARM_SUBSCRIPTION_ID}"

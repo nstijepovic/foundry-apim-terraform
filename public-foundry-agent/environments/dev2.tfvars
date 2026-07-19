@@ -1,10 +1,12 @@
-# Public Foundry + APIM connection — prod environment.
-# Copy/adjust for your subscription. Provide secrets via TF_VAR_* env vars
-# (never commit apim_subscription_key).
+# Public Foundry + APIM connection — dev2 environment (parallel to dev, new RG).
+# Deployed via the "dev2" Terraform workspace so its state is separate from the
+# original dev deployment in rg-public-agent-uaen.
+# Provide secrets via TF_VAR_* env vars (never commit apim_subscription_key).
 
 subscription_id     = "fbfbfbe5-9ee2-43ed-b514-f3266c2193ab"
-location            = "eastus2"
-resource_group_name = "rg-public-agent-prod"
+# westus3: chosen over uaenorth for model/agent capacity.
+location            = "westus3"
+resource_group_name = "rg-public-agent-wus3"
 
 name_prefix         = "foundry"
 project_name_prefix = "proj"
@@ -24,5 +26,6 @@ document_intelligence_sku    = "S0"
 # Optional: object ID of the app identity that processes documents.
 # docintel_app_principal_id = "00000000-0000-0000-0000-000000000000"
 
-# Optional: grant a developer/service principal the Foundry User role.
-# agent_developer_principal_id = "00000000-0000-0000-0000-000000000000"
+# Developer access: Foundry User on the account + Cognitive Services User on the
+# Document Intelligence account, so agents and DI can be tested from this machine.
+agent_developer_principal_id = "719c1b75-9621-4c49-aa8d-b216261e6f00"

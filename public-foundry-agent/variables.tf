@@ -2,9 +2,8 @@
 # Subscription / location
 # ---------------------------------------------------------------------------
 variable "subscription_id" {
-  description = "Azure subscription ID for the deployment."
+  description = "Azure subscription ID for the deployment. No default on purpose: set it in the environment tfvars so a forgotten value can never target the wrong subscription."
   type        = string
-  default     = "fbfbfbe5-9ee2-43ed-b514-f3266c2193ab"
 }
 
 variable "location" {
@@ -52,6 +51,12 @@ variable "project_cap_host_name" {
   default     = "caphostproj"
 }
 
+variable "account_cap_host_name" {
+  description = "Name of the account capability host (required before the project capability host in newer regions)."
+  type        = string
+  default     = "caphostacc"
+}
+
 # ---------------------------------------------------------------------------
 # Foundry -> hub APIM model connection (consume the model behind the hub APIM)
 # ---------------------------------------------------------------------------
@@ -62,9 +67,8 @@ variable "enable_apim_model_connection" {
 }
 
 variable "hub_apim_name" {
-  description = "Name of the existing hub API Management instance used by the Foundry connection."
+  description = "Name of the existing hub API Management instance used by the Foundry connection. No default on purpose: supplied by the managing team via tfvars."
   type        = string
-  default     = "hun-apim-test-007"
 }
 
 variable "apim_openai_connection_name" {
@@ -89,6 +93,43 @@ variable "apim_subscription_key" {
   description = "Hub APIM subscription key used by the Foundry connection to call the model through APIM. Provide via TF_VAR_apim_subscription_key; do not commit."
   type        = string
   sensitive   = true
+  default     = null
+}
+
+# ---------------------------------------------------------------------------
+# Azure Document Intelligence
+# ---------------------------------------------------------------------------
+variable "enable_document_intelligence" {
+  description = "When true, deploys a dedicated Document Intelligence account (keyless), a Foundry project connection to it, and the related role assignments."
+  type        = bool
+  default     = true
+}
+
+variable "document_intelligence_kind" {
+  description = "Kind of the Document Intelligence Cognitive Services account. FormRecognizer = single-service Document Intelligence (narrowest RBAC surface); AIServices = multi-service account that also serves Speech/Vision/Language/Content Understanding. Changing this recreates the account and changes its endpoint hostname."
+  type        = string
+  default     = "FormRecognizer"
+
+  validation {
+    condition     = contains(["FormRecognizer", "AIServices"], var.document_intelligence_kind)
+    error_message = "document_intelligence_kind must be FormRecognizer or AIServices."
+  }
+}
+
+variable "document_intelligence_sku" {
+  description = "SKU of the Document Intelligence account. S0 = standard pay-per-page (no base fee). F0 = free tier for trials only: analyzes just the first 2 pages of each document."
+  type        = string
+  default     = "S0"
+
+  validation {
+    condition     = contains(["F0", "S0"], var.document_intelligence_sku)
+    error_message = "document_intelligence_sku must be F0 or S0."
+  }
+}
+
+variable "docintel_app_principal_id" {
+  description = "Optional Entra object ID of an application identity that performs document processing, granted Cognitive Services User on the Document Intelligence account. Leave null to skip."
+  type        = string
   default     = null
 }
 

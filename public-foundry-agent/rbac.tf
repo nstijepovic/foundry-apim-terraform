@@ -83,6 +83,36 @@ resource "azurerm_cosmosdb_sql_role_assignment" "cosmos_data_contributor" {
   depends_on = [azapi_resource.project_caphost]
 }
 
+# ---- Document Intelligence access ----
+
+# Cognitive Services User on the Document Intelligence account. With local
+# auth disabled, this data-plane role is the only way to call the DI API.
+
+# Project managed identity — lets workloads running as the project call DI.
+resource "azurerm_role_assignment" "docintel_project" {
+  count              = var.enable_document_intelligence ? 1 : 0
+  scope              = azurerm_cognitive_account.docintel[0].id
+  role_definition_id = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/a97b65f3-24c7-4388-baec-2e87135dc908"
+  principal_id       = local.project_principal_id
+  principal_type     = "ServicePrincipal"
+}
+
+# Optional developer principal (same identity as the agent_developer role).
+resource "azurerm_role_assignment" "docintel_developer" {
+  count              = var.enable_document_intelligence && var.agent_developer_principal_id != null ? 1 : 0
+  scope              = azurerm_cognitive_account.docintel[0].id
+  role_definition_id = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/a97b65f3-24c7-4388-baec-2e87135dc908"
+  principal_id       = var.agent_developer_principal_id
+}
+
+# Optional separate application identity that performs document processing.
+resource "azurerm_role_assignment" "docintel_app" {
+  count              = var.enable_document_intelligence && var.docintel_app_principal_id != null ? 1 : 0
+  scope              = azurerm_cognitive_account.docintel[0].id
+  role_definition_id = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/a97b65f3-24c7-4388-baec-2e87135dc908"
+  principal_id       = var.docintel_app_principal_id
+}
+
 # ---- Developer access ----
 
 # Optional: grant a developer or service principal the "Foundry User" (formerly

@@ -81,7 +81,7 @@ resource "azapi_resource" "conn_cosmos" {
 
   body = {
     properties = {
-      category = "CosmosDB"
+      category = "CosmosDb"
       target   = azurerm_cosmosdb_account.cosmos.endpoint
       authType = "AAD"
       metadata = {

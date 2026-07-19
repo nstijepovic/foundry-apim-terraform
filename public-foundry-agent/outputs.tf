@@ -58,6 +58,26 @@ output "storage_account_name" {
   value       = local.storage_name
 }
 
+output "docintel_account_name" {
+  description = "Document Intelligence account name (null when disabled)."
+  value       = var.enable_document_intelligence ? azurerm_cognitive_account.docintel[0].name : null
+}
+
+output "docintel_account_id" {
+  description = "Document Intelligence account resource ID (null when disabled)."
+  value       = var.enable_document_intelligence ? azurerm_cognitive_account.docintel[0].id : null
+}
+
+output "docintel_endpoint" {
+  description = "Document Intelligence endpoint for application code (null when disabled)."
+  value       = var.enable_document_intelligence ? azurerm_cognitive_account.docintel[0].endpoint : null
+}
+
+output "docintel_connection_name" {
+  description = "Foundry project connection name for Document Intelligence (null when disabled)."
+  value       = var.enable_document_intelligence ? local.docintel_conn_name : null
+}
+
 output "apim_gateway_url" {
   description = "Hub APIM gateway URL used by the Foundry connection."
   value       = "https://${var.hub_apim_name}.azure-api.net"

@@ -12,13 +12,16 @@ still use its own private network for agents and customer-owned resources.
 > quotas, and backend mappings are owned by the central APIM platform team and are not
 > implemented by this repository.
 
-This repo contains the customer spoke, agent samples, and an optional hub reference:
+This repo contains the customer spoke (private and public variants), agent samples, and an
+optional hub reference:
 
 | # | Folder | What it does |
 | - | ------ | ------------ |
-| 1 | [`spoke-private-agent/`](spoke-private-agent) | **Customer deployment:** creates the private Foundry account + project (BYO Storage/Search/Cosmos), its VNet, an APIM **connection**, and a **jumpbox** VM reached through Azure Bastion. |
-| 2 | [`agent-samples/`](agent-samples) | **Customer validation:** creates and tests an agent that routes model calls through the APIM connection. Run these scripts from the jumpbox. |
-| 3 | [`hub-apim-openai/`](hub-apim-openai) | **Reference only:** creates a model and APIM operations for an isolated test environment. Do not apply it to the shared platform APIM. |
+| 1 | [`spoke-private-agent/`](spoke-private-agent) | **Customer deployment (private):** creates the private Foundry account + project (BYO Storage/Search/Cosmos), its VNet, an APIM **connection**, and a **jumpbox** VM reached through Azure Bastion. |
+| 2 | [`public-foundry-agent/`](public-foundry-agent) | **Customer deployment (public):** the same Standard Agent stack (BYO dependencies + account/project capability hosts + APIM connection) over public endpoints — no VNet or jumpbox — plus an optional dedicated **Azure Document Intelligence** account (keyless, with a project connection and RBAC). See its README for full deployment steps. |
+| 3 | [`public-foundry-agent-basic/`](public-foundry-agent-basic) | **Minimal public variant:** Foundry account + project + APIM connection only; Microsoft-managed agent storage (no BYO resources, no capability host). |
+| 4 | [`agent-samples/`](agent-samples) | **Customer validation:** creates and tests an agent that routes model calls through the APIM connection. Run from the jumpbox for the private spoke, or directly from your machine for the public variants. |
+| 5 | [`hub-apim-openai/`](hub-apim-openai) | **Reference only:** creates a model and APIM operations for an isolated test environment. Do not apply it to the shared platform APIM. |
 
 > `code/` is early single-folder scaffolding and is **not** part of the supported flow — ignore it.
 

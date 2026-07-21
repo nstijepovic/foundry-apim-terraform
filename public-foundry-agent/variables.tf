@@ -112,7 +112,7 @@ variable "document_intelligence_kind" {
 
   validation {
     condition     = contains(["FormRecognizer", "AIServices"], var.document_intelligence_kind)
-    error_message = "document_intelligence_kind must be FormRecognizer or AIServices."
+    error_message = "The document_intelligence_kind value must be either FormRecognizer or AIServices."
   }
 }
 
@@ -123,7 +123,7 @@ variable "document_intelligence_sku" {
 
   validation {
     condition     = contains(["F0", "S0"], var.document_intelligence_sku)
-    error_message = "document_intelligence_sku must be F0 or S0."
+    error_message = "The document_intelligence_sku value must be either F0 or S0."
   }
 }
 

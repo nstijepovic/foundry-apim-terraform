@@ -14,11 +14,7 @@ enable_apim_model_connection = true
 hub_apim_name                = "hun-apim-test-007"
 apim_openai_connection_name  = "hub-apim-openai"
 apim_openai_path             = "openai"
-# Agents call chat completions through this connection (not the Responses API
-# directly) - use whatever api-version the hub's chat completions endpoint
-# requires. The hub imports the 2024-10-21 GA inference spec, so that's the
-# value to use here; confirm with the managing team if their setup differs.
-apim_inference_api_version = "2024-10-21"
+apim_inference_api_version   = "2024-10-21"
 
 # Azure Document Intelligence (dedicated keyless account + project connection)
 enable_document_intelligence = true

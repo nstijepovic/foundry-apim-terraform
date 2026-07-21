@@ -18,10 +18,6 @@ endpoints, or jumpbox. Includes an optional dedicated Document Intelligence acco
 | APIM model connection | `category = ApiManagement`; model reference is `<connection>/<deployment>`, e.g. `hub-apim-openai/gpt-5.1` |
 | Document Intelligence (optional, default on) | Dedicated keyless account + project connection + RBAC |
 
-The agent calls Foundry's own Responses API; Foundry in turn calls **chat completions**
-on the APIM connection (not `/responses`) — so `apim_inference_api_version` only needs to
-be a version your gateway's chat completions endpoint accepts, not a Responses-capable one.
-
 ## Prerequisites
 
 - Terraform `>= 1.10.0`, Azure CLI logged in.

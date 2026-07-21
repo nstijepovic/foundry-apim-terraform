@@ -84,7 +84,7 @@ variable "apim_openai_path" {
 }
 
 variable "apim_inference_api_version" {
-  description = "api-version Foundry appends when it calls chat completions through the APIM connection (connection metadata.inferenceAPIVersion). Per the official APIM setup guide for Foundry agents, agents call chat completions on the gateway (not the Responses API) - set this to whatever api-version your APIM chat completions test actually requires, or an empty string if none is required."
+  description = "api-version used for inference calls through APIM (connection metadata.inferenceAPIVersion)."
   type        = string
   default     = "2024-10-21"
 }

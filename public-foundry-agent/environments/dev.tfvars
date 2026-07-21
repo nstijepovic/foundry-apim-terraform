@@ -14,8 +14,7 @@ enable_apim_model_connection = true
 hub_apim_name                = "hun-apim-test-007"
 apim_openai_connection_name  = "hub-apim-openai"
 apim_openai_path             = "openai"
-# Must support the Responses API used by agent runs (matches the hub setup).
-apim_inference_api_version = "2025-03-01-preview"
+apim_inference_api_version   = "2024-10-21"
 
 # Azure Document Intelligence (dedicated keyless account + project connection)
 enable_document_intelligence = true

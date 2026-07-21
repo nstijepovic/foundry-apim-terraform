@@ -1,12 +1,6 @@
 # ---------------------------------------------------------------------------
 # Azure Document Intelligence — dedicated Cognitive Services account, keyless
-# (Entra ID only), publicly reachable like the rest of this variant.
-#
-# kind "FormRecognizer" is the current single-service Document Intelligence
-# kind (the service was renamed in 2023 but the ARM kind string was not).
-# Switch var.document_intelligence_kind to "AIServices" for the multi-service
-# umbrella (adds Speech/Vision/Language/Content Understanding on the same
-# endpoint); the account is recreated and its endpoint hostname changes.
+# publicly reachable like the rest of this variant.
 # ---------------------------------------------------------------------------
 resource "azurerm_cognitive_account" "docintel" {
   count               = var.enable_document_intelligence ? 1 : 0
@@ -28,9 +22,7 @@ resource "azurerm_cognitive_account" "docintel" {
 }
 
 # ---------------------------------------------------------------------------
-# Foundry project connection for Document Intelligence (AAD — no secret
-# stored). Discovery/portal visibility only: agents have no built-in tool for
-# CognitiveService connections, so application code performs the DI calls.
+# Foundry project connection for Document Intelligence
 # ---------------------------------------------------------------------------
 resource "azapi_resource" "conn_docintel" {
   count     = var.enable_document_intelligence ? 1 : 0

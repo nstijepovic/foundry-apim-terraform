@@ -2,10 +2,6 @@
 # Foundry ApiManagement connection whose target is the hub APIM gateway.
 # The account and project are publicly reachable and call the model through
 # APIM's public gateway URL — no VNet peering or private DNS required.
-#
-# Auth note: Foundry sends the key in the `api-key` header. The hub APIM API's
-# subscription key header must therefore be `api-key` (set
-# subscription_key_parameter_names on the hub API) — see the hub config.
 # ---------------------------------------------------------------------------
 resource "azapi_resource" "conn_apim_openai" {
   count     = var.enable_apim_model_connection ? 1 : 0

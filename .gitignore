@@ -23,8 +23,13 @@ backend.tf
 .bootstrap-cicd.ps1
 *.auto.tfvars
 
-# Customer-specific tfvars (keep example.tfvars only)
+# Customer-specific tfvars (keep the dev.tfvars template only)
 my.tfvars
+**/environments/customer.tfvars
+**/environments/*.local.tfvars
+
+# Internal notes — may contain customer keys/IDs, never ship to a shared repo
+PROBLEM-HANDOFF.md
 
 # Personal dev helper scripts (not part of the customer flow)
 spoke-private-agent/.run-apply.ps1

@@ -37,8 +37,8 @@ cp environments/prod.tfvars environments/<env>.tfvars
 
 1. Edit `environments/<env>.tfvars`: `subscription_id`, `location`, `resource_group_name`,
    naming prefixes, `hub_apim_name`, `apim_openai_path`, `apim_inference_api_version`,
-   the Document Intelligence block, and `agent_developer_principal_id` (your object ID,
-   via `az ad signed-in-user show --query id -o tsv`).
+   the Document Intelligence block, and `agent_developer_principal_ids` (one or more
+   object IDs; get your own with `az ad signed-in-user show --query id -o tsv`).
 2. Set the secret for this session only:
    ```pwsh
    $env:TF_VAR_apim_subscription_key = "<entity-product-scoped-apim-key>"
@@ -71,14 +71,35 @@ uv run chat_with_agent.py
 
 A `403` in the first minutes after apply is RBAC propagation — retry before debugging.
 
+## Model discovery (dynamic vs. static)
+
+By default the connection uses **dynamic discovery** — Foundry calls the gateway's
+`GET /deployments` routes to learn which models are available. If the gateway doesn't
+expose those routes (or they're broken), set `apim_static_models` in the tfvars to a
+**static catalog** instead, so Foundry skips discovery entirely:
+
+```hcl
+apim_static_models = [
+  {
+    name       = "gpt-5.1-50-3" # deployment alias behind the gateway
+    model_name = "gpt-5.1"      # underlying model family
+    # model_version = ""        # optional (default "")
+    # model_format  = "OpenAI"  # optional (default "OpenAI")
+  }
+]
+```
+
+One entry per approved deployment alias. Leave `apim_static_models` empty (the default)
+for dynamic discovery. See `environments/customer.tfvars` for a full example.
+
 ## Document Intelligence
 
 On by default (`enable_document_intelligence = true`). Deploys a dedicated, keyless
 Document Intelligence account (`document_intelligence_kind = FormRecognizer`), a Foundry
 project connection to it, and Cognitive Services User role assignments for the project
-identity, `agent_developer_principal_id`, and `docintel_app_principal_id`.
+identity, `agent_developer_principal_ids`, and `docintel_app_principal_ids`.
 
 ## Hand over
 
-- Repoint `agent_developer_principal_id` and `docintel_app_principal_id` to the
+- Repoint `agent_developer_principal_ids` and `docintel_app_principal_ids` to the
   customer's identities, then re-apply.

@@ -20,12 +20,31 @@ resource "azapi_resource" "conn_apim_openai" {
       credentials = {
         key = var.apim_subscription_key
       }
-      metadata = {
-        # deploymentInPath=true => deployment name is in the URL path
-        # (/openai/deployments/{name}/chat/completions), matching the hub APIM API.
-        deploymentInPath    = "true"
-        inferenceAPIVersion = var.apim_inference_api_version
-      }
+      metadata = merge(
+        {
+          # deploymentInPath=true => deployment name is in the URL path
+          # (/openai/deployments/{name}/chat/completions), matching the hub APIM API.
+          deploymentInPath    = "true"
+          inferenceAPIVersion = var.apim_inference_api_version
+        },
+        # Optional static model catalog. When set, Foundry uses this list instead
+        # of calling the gateway's /deployments discovery routes. Leave the
+        # apim_static_models variable empty for dynamic discovery (the default).
+        length(var.apim_static_models) > 0 ? {
+          models = jsonencode([
+            for m in var.apim_static_models : {
+              name = m.name
+              properties = {
+                model = {
+                  name    = m.model_name
+                  version = m.model_version
+                  format  = m.model_format
+                }
+              }
+            }
+          ])
+        } : {}
+      )
     }
   }
 }

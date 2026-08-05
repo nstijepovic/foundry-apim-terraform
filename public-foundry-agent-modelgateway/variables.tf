@@ -69,46 +69,77 @@ variable "account_cap_host_name" {
 }
 
 # ---------------------------------------------------------------------------
-# Foundry -> hub APIM model connection (consume the model behind the hub APIM)
+# Foundry -> self-hosted model gateway connection (category = ModelGateway)
+#
+# The gateway itself is BYO: this module never provisions it. It must expose an
+# OpenAI-compatible /chat/completions endpoint (with tool/function calling),
+# accept API-key auth, and be reachable from Azure.
 # ---------------------------------------------------------------------------
-variable "enable_apim_model_connection" {
-  description = "When true, creates a Foundry ApiManagement connection that targets the hub APIM gateway so the agent can use the model behind APIM."
+variable "enable_model_gateway_connection" {
+  description = "When true, creates a Foundry ModelGateway connection that targets a self-hosted or third-party gateway so the agent can consume models behind it."
   type        = bool
   default     = true
 }
 
-variable "hub_apim_name" {
-  description = "Name of the existing hub API Management instance used by the Foundry connection. No default on purpose: supplied by the managing team via tfvars."
+variable "model_gateway_connection_name" {
+  description = "Name of the Foundry ModelGateway connection. This is the prefix of the agent model reference, i.e. <connection>/<deployment>."
   type        = string
+  default     = "model-gateway"
 }
 
-variable "apim_openai_connection_name" {
-  description = "Name of the Foundry ApiManagement connection that points at the hub APIM."
+variable "model_gateway_target" {
+  description = <<-EOT
+    Base URL of the gateway: take the full chat completions URL and strip the
+    trailing /chat/completions, plus any /deployments/{name} segment.
+      https://gw.example.com/chat/completions                      -> https://gw.example.com                 (deployment_in_path = false)
+      https://gw.example.com/v1/custom/chat/completions            -> https://gw.example.com/v1/custom       (deployment_in_path = false)
+      https://gw.example.com/deployments/gpt-4o/chat/completions   -> https://gw.example.com                 (deployment_in_path = true)
+  EOT
   type        = string
-  default     = "hub-apim-openai"
+
+  validation {
+    condition     = can(regex("^https://", var.model_gateway_target))
+    error_message = "model_gateway_target must be an absolute https:// URL."
+  }
+
+  validation {
+    condition     = !can(regex("/chat/completions/?$", var.model_gateway_target))
+    error_message = "model_gateway_target must not include the /chat/completions suffix; Foundry appends it."
+  }
+
+  validation {
+    condition     = !can(regex("/$", var.model_gateway_target))
+    error_message = "model_gateway_target must not end with a trailing slash."
+  }
 }
 
-variable "apim_openai_path" {
-  description = "APIM API path suffix that fronts the Azure OpenAI inference API (matches the hub api_path)."
-  type        = string
-  default     = "openai"
-}
-
-variable "apim_inference_api_version" {
-  description = "api-version used for inference calls through APIM (connection metadata.inferenceAPIVersion)."
-  type        = string
-  default     = "2024-10-21"
-}
-
-variable "apim_subscription_key" {
-  description = "Hub APIM subscription key used by the Foundry connection to call the model through APIM. Provide via TF_VAR_apim_subscription_key; do not commit."
+variable "model_gateway_api_key" {
+  description = "API key the Foundry connection presents to the gateway. Provide via TF_VAR_model_gateway_api_key; do not commit. Note: Terraform stores this in state in plaintext."
   type        = string
   sensitive   = true
   default     = null
 }
 
-variable "apim_static_models" {
-  description = "Optional static model catalog for the APIM connection (one entry per approved deployment alias). When set, Foundry skips the gateway's /deployments discovery routes. Leave empty for dynamic discovery."
+variable "model_gateway_deployment_in_path" {
+  description = "true  -> Foundry calls {target}/deployments/{deployment}/chat/completions. false -> Foundry calls {target}/chat/completions and passes {\"model\": \"<deployment>\"} in the body."
+  type        = bool
+  default     = false
+}
+
+variable "model_gateway_inference_api_version" {
+  description = "Optional api-version query parameter appended to inference (chat completion) calls. Leave empty to omit — most non-Azure gateways do not expect it."
+  type        = string
+  default     = ""
+}
+
+variable "model_gateway_deployment_api_version" {
+  description = "Optional api-version query parameter appended to dynamic model-discovery calls only. Leave empty to omit."
+  type        = string
+  default     = ""
+}
+
+variable "model_gateway_static_models" {
+  description = "Static model catalogue (one entry per deployment the gateway exposes). Mutually exclusive with model_gateway_discovery. `name` is the deployment alias used in the agent model reference."
   type = list(object({
     name          = string
     model_name    = string
@@ -116,6 +147,55 @@ variable "apim_static_models" {
     model_format  = optional(string, "OpenAI")
   }))
   default = []
+}
+
+variable "model_gateway_discovery" {
+  description = "Dynamic model discovery endpoints, relative to model_gateway_target. Mutually exclusive with model_gateway_static_models. deployment_provider selects the response parser and must be OpenAI or AzureOpenAI."
+  type = object({
+    list_models_endpoint = string
+    get_model_endpoint   = string
+    deployment_provider  = optional(string, "OpenAI")
+  })
+  default = null
+
+  validation {
+    condition = alltrue([
+      for d in(var.model_gateway_discovery == null ? [] : [var.model_gateway_discovery]) :
+      contains(["OpenAI", "AzureOpenAI"], d.deployment_provider)
+    ])
+    error_message = "model_gateway_discovery.deployment_provider must be either OpenAI or AzureOpenAI."
+  }
+
+  validation {
+    condition = alltrue([
+      for d in(var.model_gateway_discovery == null ? [] : [var.model_gateway_discovery]) :
+      can(regex("\\{deploymentName\\}", d.get_model_endpoint))
+    ])
+    error_message = "model_gateway_discovery.get_model_endpoint must contain the {deploymentName} placeholder."
+  }
+}
+
+variable "model_gateway_custom_headers" {
+  description = "Optional extra headers added to every inference request, e.g. for gateway policy routing. Leave empty to omit."
+  type        = map(string)
+  default     = {}
+}
+
+variable "model_gateway_auth_config" {
+  description = "Optional override of the auth header shape. Defaults to the `api-key` header when unset. `format` is a template containing the {api_key} placeholder, e.g. name = \"Authorization\", format = \"Bearer {api_key}\"."
+  type = object({
+    name   = string
+    format = optional(string, "{api_key}")
+  })
+  default = null
+
+  validation {
+    condition = alltrue([
+      for a in(var.model_gateway_auth_config == null ? [] : [var.model_gateway_auth_config]) :
+      can(regex("\\{api_key\\}", a.format))
+    ])
+    error_message = "model_gateway_auth_config.format must contain the {api_key} placeholder."
+  }
 }
 
 # ---------------------------------------------------------------------------

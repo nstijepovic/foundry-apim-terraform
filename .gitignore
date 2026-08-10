@@ -28,8 +28,12 @@ my.tfvars
 **/environments/customer.tfvars
 **/environments/*.local.tfvars
 
+# Model Gateway validator: filled-in params file (keep the .example.json only)
+params.json
+
 # Internal notes — may contain customer keys/IDs, never ship to a shared repo
 PROBLEM-HANDOFF.md
+public-foundry-agent-modelgateway/DEPLOY.md
 
 # Personal dev helper scripts (not part of the customer flow)
 spoke-private-agent/.run-apply.ps1

@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "Input for the official pre-deployment validator from microsoft-foundry/foundry-samples:",
+    "  infrastructure/infrastructure-setup-bicep/01-connections/model-gateway/test_model_gateway_connection.py",
+    "",
+    "Copy to params.json, edit, then run BEFORE terraform apply. The script never",
+    "touches Azure - it only calls your gateway - so it can run before any Foundry",
+    "resource exists. See DEPLOY.md step 0.",
+    "",
+    "Keep the values below in sync with environments/customer.tfvars:",
+    "  targetUrl           <- model_gateway_target",
+    "  deploymentInPath    <- model_gateway_deployment_in_path",
+    "  inferenceAPIVersion <- model_gateway_inference_api_version",
+    "  staticModels        <- model_gateway_static_models",
+    "  authConfig          <- model_gateway_auth_config",
+    "  customHeaders       <- model_gateway_custom_headers",
+    "",
+    "NOTE: the parameter-file shape is NOT the connection metadata shape. Static",
+    "models live under 'staticModels' here but under 'models' in the connection,",
+    "and the discovery endpoints are three flat keys here rather than nested",
+    "inside 'modelDiscovery'. Copy from this file, not from the connection JSON.",
+    "",
+    "The API key is deliberately absent - pass it with --api-key."
+  ],
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "targetUrl": {
+      "_comment": "Full chat completions URL minus /chat/completions (and minus /deployments/{name}).",
+      "value": "https://ai-gw.fednet.gov.ae/foundry"
+    },
+    "gatewayName": {
+      "value": "fednet-gateway"
+    },
+    "authType": {
+      "_comment": "ApiKey or OAuth2. OAuth2 also needs clientId, tokenUrl, scopes and --client-secret.",
+      "value": "ApiKey"
+    },
+    "deploymentInPath": {
+      "_comment": "false -> POST {targetUrl}/chat/completions with {\"model\": \"<name>\"} in the body. true -> {targetUrl}/deployments/<name>/chat/completions.",
+      "value": "false"
+    },
+    "inferenceAPIVersion": {
+      "_comment": "Appended as ?api-version=... Leave empty unless your gateway requires it. Kong does not.",
+      "value": ""
+    },
+    "staticModels": {
+      "_comment": "'name' is what gets sent as the model field and what --deployment-name must match. Leave version empty - it is appended to the model name in API calls.",
+      "value": [
+        {
+          "name": "glm-5.2",
+          "properties": {
+            "model": {
+              "name": "glm-5.2",
+              "version": "",
+              "format": "OpenAI"
+            }
+          }
+        }
+      ]
+    },
+    "authConfig": {
+      "_comment": "Omit this block entirely to use the default 'api-key' header. Kong key-auth uses 'apikey'.",
+      "value": {
+        "type": "api_key",
+        "name": "apikey",
+        "format": "{api_key}"
+      }
+    }
+  }
+}

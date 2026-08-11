@@ -1,9 +1,9 @@
 """
 Test Connection
 
-Verifies that the APIM connection is properly configured in Azure AI Foundry.
-Lists available connections, then creates a throwaway agent that uses the
-model behind the hub APIM and confirms it responds.
+Verifies that the model gateway connection is properly configured in Azure AI
+Foundry. Lists available connections, then creates a throwaway agent that uses
+a model behind the gateway and confirms it responds.
 """
 
 import os
@@ -20,8 +20,8 @@ PROJECT_ENDPOINT = os.environ.get(
     "AZURE_AI_PROJECT_ENDPOINT",
     "https://<account>.services.ai.azure.com/api/projects/<project>",
 )
-CONNECTION_NAME = os.environ.get("AZURE_AI_CONNECTION_NAME", "hub-apim-openai")
-MODEL_NAME = os.environ.get("AZURE_AI_MODEL_NAME", "gpt-5.1")
+CONNECTION_NAME = os.environ.get("AZURE_AI_CONNECTION_NAME", "fednet-gateway")
+MODEL_NAME = os.environ.get("AZURE_AI_MODEL_NAME", "glm-5.2")
 
 
 def main():
@@ -54,7 +54,7 @@ def main():
 
     if not found_connection:
         print(f"⚠️  Connection '{CONNECTION_NAME}' not found!")
-        print("   Make sure the spoke Terraform applied the APIM connection.")
+        print("   Make sure Terraform applied the gateway connection.")
         return
 
     # Test the model by creating a simple agent.

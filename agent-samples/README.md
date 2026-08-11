@@ -1,7 +1,7 @@
 # Agent Samples
 
 Python scripts that create and use a Microsoft Foundry Agent whose model is served
-through a hub APIM connection (`<connection>/<deployment>`, e.g. `hub-apim-openai/gpt-5.1`).
+through a connection (`<connection>/<model>`, e.g. `fednet-gateway/glm-5.2`).
 
 Adapted from
 [nstijepovic/sample-foundry-apim/03-agent-samples](https://github.com/nstijepovic/sample-foundry-apim/tree/master/03-agent-samples).
@@ -11,8 +11,9 @@ Adapted from
 - **`spoke-private-agent/`** deployments: the Foundry account is
   `publicNetworkAccess=Disabled` — run these scripts from the **jumpbox** (Azure Bastion),
   not your local machine. VM name: `terraform output jumpbox_vm_name`.
-- **`public-foundry-agent/`** and **`public-foundry-agent-basic/`** deployments: endpoints
-  are public — run these scripts directly from your machine with `az login`.
+- **`public-foundry-agent-modelgateway/`**, **`public-foundry-agent/`** and
+  **`public-foundry-agent-basic/`** deployments: endpoints are public — run these scripts
+  directly from your machine with `az login`.
 
 ## Prerequisites
 
@@ -41,7 +42,7 @@ Fill in `.env` from `terraform output` in the deployment folder:
 
 | Script | Purpose |
 | --- | --- |
-| `test_connection.py` | List connections and verify the model responds through APIM |
+| `test_connection.py` | List connections and verify the model responds through the gateway |
 | `create_agent.py` | Create a persistent agent (name from `AZURE_AI_AGENT_NAME`) |
 | `chat_with_agent.py` | Interactive chat with the agent |
 
@@ -54,5 +55,8 @@ uv run chat_with_agent.py   # type 'exit' to quit
 ## Model reference format
 
 ```python
-model = "hub-apim-openai/gpt-5.1"   # <connection-name>/<deployment-name>
+model = "fednet-gateway/glm-5.2"   # <connection-name>/<model-name>
 ```
+
+For a model gateway connection the model name must be one of the models declared in
+`model_gateway_static_models` — Foundry sends it as the `model` field in the request body.

@@ -1,8 +1,8 @@
 """
 Create Agent
 
-Creates a persistent agent in Azure AI Foundry that uses the model exposed
-through the hub APIM connection (routed to gpt-5.1 behind API Management).
+Creates a persistent agent in Azure AI Foundry that uses a model exposed
+through the model gateway connection.
 """
 
 import os
@@ -19,12 +19,12 @@ PROJECT_ENDPOINT = os.environ.get(
     "AZURE_AI_PROJECT_ENDPOINT",
     "https://<account>.services.ai.azure.com/api/projects/<project>",
 )
-CONNECTION_NAME = os.environ.get("AZURE_AI_CONNECTION_NAME", "hub-apim-openai")
-MODEL_NAME = os.environ.get("AZURE_AI_MODEL_NAME", "gpt-5.1")
+CONNECTION_NAME = os.environ.get("AZURE_AI_CONNECTION_NAME", "fednet-gateway")
+MODEL_NAME = os.environ.get("AZURE_AI_MODEL_NAME", "glm-5.2")
 
 # Agent configuration
-AGENT_NAME = os.environ.get("AZURE_AI_AGENT_NAME", "apim-agent")
-AGENT_INSTRUCTIONS = """You are a helpful assistant powered by an external LLM through Azure API Management.
+AGENT_NAME = os.environ.get("AZURE_AI_AGENT_NAME", "gateway-agent")
+AGENT_INSTRUCTIONS = """You are a helpful assistant powered by an external LLM served through a model gateway.
 
 Be concise and helpful in your responses."""
 
